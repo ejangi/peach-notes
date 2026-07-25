@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Peach Notes
+Comment=A native GNOME notes application
+Exec=peach-notes
+Icon=org.gnome.PeachNotes
+Terminal=false
+Type=Application
+Categories=GNOME;GTK;Utility;TextEditor;
+StartupWMClass=org.gnome.PeachNotes
