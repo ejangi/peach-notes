@@ -1,11 +1,11 @@
 use crate::domain::Note;
 use crate::markdown::renderers::{
-    render_attachment_widget, render_image_widget, render_table_widget, render_task_item_widget,
-    TableData,
+    render_attachment_widget, render_code_block_widget, render_image_widget, render_table_widget,
+    render_task_item_widget, TableData,
 };
 use glib::translate::IntoGlib;
 use gtk4::prelude::*;
-use gtk4::{Box as GtkBox, Label, Orientation, TextBuffer, TextView};
+use gtk4::{TextBuffer, TextView};
 use pulldown_cmark::{Event, HeadingLevel, Options, Tag, TagEnd};
 use std::path::Path;
 
@@ -223,7 +223,18 @@ pub fn setup_text_buffer_tags(buffer: &TextBuffer) {
     }
 
     if tag_table.lookup("bullet-list").is_none() {
-        let tag = gtk4::TextTag::builder().name("bullet-list").build();
+        let tag = gtk4::TextTag::builder()
+            .name("bullet-list")
+            .pixels_below_lines(2)
+            .build();
+        tag_table.add(&tag);
+    }
+
+    if tag_table.lookup("list-block-end").is_none() {
+        let tag = gtk4::TextTag::builder()
+            .name("list-block-end")
+            .pixels_below_lines(20)
+            .build();
         tag_table.add(&tag);
     }
 
@@ -397,6 +408,21 @@ pub fn parse_markdown_to_buffer(
             Event::End(TagEnd::List(_)) => {
                 if !in_metadata {
                     list_stack.pop();
+                    if list_stack.is_empty() {
+                        let end_offset = buffer.end_iter().offset();
+                        if end_offset > 0 {
+                            let text_before = buffer
+                                .text(&buffer.start_iter(), &buffer.end_iter(), true)
+                                .to_string();
+                            if !text_before.ends_with("\n\n") {
+                                if text_before.ends_with('\n') {
+                                    buffer.insert(&mut buffer.end_iter(), "\n");
+                                } else {
+                                    buffer.insert(&mut buffer.end_iter(), "\n\n");
+                                }
+                            }
+                        }
+                    }
                 }
             }
             Event::TaskListMarker(checked) => {
@@ -442,43 +468,12 @@ pub fn parse_markdown_to_buffer(
             Event::End(TagEnd::CodeBlock) => {
                 if !in_metadata && in_code_block {
                     in_code_block = false;
-
-                    let end_offset = buffer.end_iter().offset();
-                    if end_offset > 0 {
-                        let mut check_iter = buffer.end_iter();
-                        check_iter.backward_char();
-                        if check_iter.char() != '\n' {
-                            buffer.insert(&mut buffer.end_iter(), "\n");
-                        }
-                    }
-
-                    let anchor_offset = buffer.end_iter().offset();
-                    let anchor = buffer.create_child_anchor(&mut buffer.end_iter());
-                    buffer.insert(&mut buffer.end_iter(), "\n");
-
-                    let container_box = GtkBox::builder()
-                        .orientation(Orientation::Vertical)
-                        .hexpand(true)
-                        .css_classes(vec!["code-block-container".to_string()])
-                        .build();
-
-                    let label = Label::builder()
-                        .label(code_block_accumulator.trim_end())
-                        .selectable(true)
-                        .wrap(false)
-                        .hexpand(true)
-                        .xalign(0.0)
-                        .css_classes(vec!["code-block-text".to_string()])
-                        .build();
-
-                    container_box.append(&label);
-                    text_view.add_child_at_anchor(&container_box, &anchor);
-
-                    let start_iter = buffer.iter_at_offset(anchor_offset);
-                    let end_iter = buffer.end_iter();
-                    if let Some(tag) = buffer.tag_table().lookup("code-block") {
-                        buffer.apply_tag(&tag, &start_iter, &end_iter);
-                    }
+                    render_code_block_widget(
+                        buffer,
+                        text_view,
+                        &mut buffer.end_iter(),
+                        &code_block_accumulator,
+                    );
                 }
             }
             Event::Start(Tag::Heading { level, .. }) => {
@@ -709,6 +704,7 @@ pub fn parse_markdown_to_buffer(
 mod tests {
     use super::*;
     use crate::markdown::renderers::resize_all_images_in_buffer;
+    use gtk4::Box as GtkBox;
     use std::fs;
 
     fn init_gtk_for_tests() -> bool {

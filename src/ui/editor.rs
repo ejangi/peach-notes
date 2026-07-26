@@ -186,10 +186,13 @@ impl Editor {
                     let clean_text = line_text.trim_start_matches('\u{FFFC}').trim();
 
                     if clean_text.is_empty() {
-                        // Empty task item + Enter -> Delete task line and exit task list
+                        // Empty task item + Enter -> Delete task line and insert a newline to leave a blank line gap
                         let mut del_start = line_start;
                         let mut del_end = line_end;
                         buf_clone_enter.delete(&mut del_start, &mut del_end);
+                        let mut ins_iter =
+                            buf_clone_enter.iter_at_offset(buf_clone_enter.cursor_position());
+                        buf_clone_enter.insert(&mut ins_iter, "\n");
                     } else {
                         // Non-empty task item + Enter -> Create new task item on next line
                         let mut ins_iter = buf_clone_enter.iter_at_offset(cursor_offset);
