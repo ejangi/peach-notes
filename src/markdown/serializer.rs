@@ -1,6 +1,34 @@
 use gtk4::prelude::*;
 use gtk4::{Label, TextBuffer};
 
+fn extract_code_text_from_widget(widget: &gtk4::Widget) -> String {
+    if let Ok(view) = widget.clone().downcast::<sourceview5::View>() {
+        let buf = view.buffer();
+        return buf
+            .text(&buf.start_iter(), &buf.end_iter(), true)
+            .to_string();
+    }
+    if let Ok(container) = widget.clone().downcast::<gtk4::Box>() {
+        let mut curr = container.first_child();
+        while let Some(child) = curr {
+            if let Ok(view) = child.clone().downcast::<sourceview5::View>() {
+                let buf = view.buffer();
+                return buf
+                    .text(&buf.start_iter(), &buf.end_iter(), true)
+                    .to_string();
+            }
+            if let Ok(label) = child.clone().downcast::<Label>() {
+                return label.text().to_string();
+            }
+            curr = child.next_sibling();
+        }
+    }
+    if let Ok(label) = widget.clone().downcast::<Label>() {
+        return label.text().to_string();
+    }
+    String::new()
+}
+
 pub fn serialize_buffer_to_markdown(buffer: &TextBuffer, frontmatter: Option<&str>) -> String {
     let mut result = String::new();
 
@@ -70,26 +98,64 @@ pub fn serialize_buffer_to_markdown(buffer: &TextBuffer, frontmatter: Option<&st
                                 result.push_str("- [ ] ");
                             }
                             // Don't mark handled = true so the line text after task anchor is serialized
+                        } else if name.starts_with("CODE_BLOCK|") {
+                            let lang = name.strip_prefix("CODE_BLOCK|").unwrap_or("");
+                            let code_text = extract_code_text_from_widget(&widget);
+
+                            if !result.is_empty() && !result.ends_with("\n\n") {
+                                if result.ends_with('\n') {
+                                    result.push('\n');
+                                } else {
+                                    result.push_str("\n\n");
+                                }
+                            }
+
+                            if lang.is_empty() {
+                                result.push_str("```\n");
+                            } else {
+                                result.push_str(&format!("```{}\n", lang));
+                            }
+                            result.push_str(code_text.trim_end());
+                            result.push_str("\n```\n");
+                            handled = true;
+                            break;
                         } else if let Ok(container) = widget.clone().downcast::<Label>() {
                             let code_text = container.text().to_string();
                             if !code_text.is_empty() {
+                                if !result.is_empty() && !result.ends_with("\n\n") {
+                                    if result.ends_with('\n') {
+                                        result.push('\n');
+                                    } else {
+                                        result.push_str("\n\n");
+                                    }
+                                }
                                 result.push_str("```\n");
                                 result.push_str(&code_text);
                                 result.push_str("\n```\n");
                                 handled = true;
                                 break;
                             }
-                        } else if let Ok(container) = widget.downcast::<gtk4::Box>() {
-                            if let Some(first_child) = container.first_child() {
-                                if let Ok(label) = first_child.downcast::<Label>() {
-                                    let code_text = label.text().to_string();
-                                    if !code_text.is_empty() {
-                                        result.push_str("```\n");
-                                        result.push_str(&code_text);
-                                        result.push_str("\n```\n");
-                                        handled = true;
-                                        break;
+                        } else if !name.starts_with("TASK|")
+                            && !name.starts_with("IMG|")
+                            && !name.starts_with("ATTACHMENT|")
+                            && !name.starts_with("TABLE|")
+                        {
+                            if let Ok(container) = widget.downcast::<gtk4::Box>() {
+                                let code_text =
+                                    extract_code_text_from_widget(container.upcast_ref());
+                                if !code_text.is_empty() {
+                                    if !result.is_empty() && !result.ends_with("\n\n") {
+                                        if result.ends_with('\n') {
+                                            result.push('\n');
+                                        } else {
+                                            result.push_str("\n\n");
+                                        }
                                     }
+                                    result.push_str("```\n");
+                                    result.push_str(code_text.trim_end());
+                                    result.push_str("\n```\n");
+                                    handled = true;
+                                    break;
                                 }
                             }
                         }

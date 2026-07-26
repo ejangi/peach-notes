@@ -33,6 +33,7 @@ jobs:
             pkg-config \
             libgtk-4-dev \
             libadwaita-1-dev \
+            libgtksourceview-5-dev \
             zip
 
       - name: Install Cargo Packaging Tools

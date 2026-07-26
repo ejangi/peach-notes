@@ -6,7 +6,7 @@ use crate::markdown::renderers::{
 use glib::translate::IntoGlib;
 use gtk4::prelude::*;
 use gtk4::{TextBuffer, TextView};
-use pulldown_cmark::{Event, HeadingLevel, Options, Tag, TagEnd};
+use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Tag, TagEnd};
 use std::path::Path;
 
 pub fn decode_percent_url(url: &str) -> String {
@@ -339,6 +339,7 @@ pub fn parse_markdown_to_buffer(
     let mut image_dest_url = String::new();
     let mut image_alt_text = String::new();
     let mut code_block_accumulator = String::new();
+    let mut code_block_lang: Option<String> = None;
     let mut extracted_frontmatter = String::new();
 
     let mut in_table = false;
@@ -470,10 +471,21 @@ pub fn parse_markdown_to_buffer(
                     );
                 }
             }
-            Event::Start(Tag::CodeBlock(_)) => {
+            Event::Start(Tag::CodeBlock(kind)) => {
                 if !in_metadata {
                     in_code_block = true;
                     code_block_accumulator.clear();
+                    code_block_lang = match kind {
+                        CodeBlockKind::Fenced(lang) => {
+                            let s = lang.to_string();
+                            if s.trim().is_empty() {
+                                None
+                            } else {
+                                Some(s)
+                            }
+                        }
+                        CodeBlockKind::Indented => None,
+                    };
                 }
             }
             Event::End(TagEnd::CodeBlock) => {
@@ -484,7 +496,9 @@ pub fn parse_markdown_to_buffer(
                         text_view,
                         &mut buffer.end_iter(),
                         &code_block_accumulator,
+                        code_block_lang.as_deref(),
                     );
+                    code_block_lang = None;
                 }
             }
             Event::Start(Tag::Heading { level, .. }) => {

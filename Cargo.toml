@@ -22,12 +22,13 @@ uuid = { version = "1.10", features = ["v4"] }
 regex = "1.10"
 log = "0.4"
 env_logger = "0.11"
+sourceview5 = "0.9"
 
 [package.metadata.deb]
 maintainer = "Peach Notes Contributors"
 copyright = "2026, Peach Notes Contributors"
 extended-description = "Peach Notes is a native GNOME desktop notes application built with Rust, GTK4, and Libadwaita."
-depends = "$auto, libgtk-4-1, libadwaita-1-0"
+depends = "$auto, libgtk-4-1, libadwaita-1-0, libgtksourceview-5-0"
 section = "utility"
 priority = "optional"
 assets = [

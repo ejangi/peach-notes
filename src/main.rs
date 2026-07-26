@@ -57,10 +57,18 @@ fn load_css() {
         .code-block-container {
             background-color: alpha(@window_fg_color, 0.08);
             border-radius: 8px;
-            padding: 12px 16px;
+            padding: 8px 12px;
             margin-top: 8px;
             margin-bottom: 20px;
             border: 1px solid alpha(@window_fg_color, 0.12);
+        }
+
+        .code-block-container textview,
+        .code-block-container textview text,
+        .code-block-container sourceview,
+        .code-block-container sourceview text {
+            background-color: transparent;
+            background: transparent;
         }
 
         .code-block-text {
@@ -68,6 +76,24 @@ fn load_css() {
             font-size: 14px;
             line-height: 1.5;
             color: @window_fg_color;
+            background-color: transparent;
+        }
+
+        .code-block-lang-dropdown,
+        .code-block-lang-dropdown button {
+            background-color: transparent;
+            background: transparent;
+            border: none;
+            box-shadow: none;
+            font-size: 12px;
+            opacity: 0.75;
+            padding: 2px 6px;
+        }
+
+        .code-block-lang-dropdown button:hover {
+            opacity: 1.0;
+            background-color: alpha(@window_fg_color, 0.08);
+            border-radius: 4px;
         }
 
         .note-image-container {

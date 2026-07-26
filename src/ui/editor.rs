@@ -88,10 +88,21 @@ impl Editor {
 
         text_view.add_css_class("card");
 
+        let current_note = Rc::new(RefCell::new(None));
+        let frontmatter = Rc::new(RefCell::new(None));
+        let is_loading = Rc::new(Cell::new(false));
+
         let buf_clone_trigger = text_buffer.clone();
         let tv_clone_trigger = text_view.clone();
+        let loading_clone_trigger = is_loading.clone();
         text_buffer.connect_insert_text(move |_buf, _iter, text| {
-            if text.contains(' ') {
+            if loading_clone_trigger.get() {
+                return;
+            }
+            let text_str = text.to_string();
+            let has_space = text_str.contains(' ');
+            let has_backtick = text_str.contains('`');
+            if has_space || has_backtick {
                 let buf = buf_clone_trigger.clone();
                 let tv = tv_clone_trigger.clone();
                 glib::idle_add_local_once(move || {
@@ -102,6 +113,15 @@ impl Editor {
 
                     let raw_prefix = buf.text(&line_start, &cursor_iter, true).to_string();
                     let trimmed = raw_prefix.trim();
+
+                    if trimmed.starts_with("```") && (trimmed == "```" || has_space) {
+                        let start_offset = line_start.offset();
+                        let del_end = cursor_offset;
+                        if try_trigger_code_block(&buf, &tv, &raw_prefix, start_offset, del_end) {
+                            return;
+                        }
+                    }
+
                     let is_task_unchecked = trimmed == "- [ ]"
                         || trimmed == "* [ ]"
                         || trimmed == "• [ ]"
@@ -162,6 +182,25 @@ impl Editor {
                     line_end.forward_to_line_end();
                 }
 
+                let line_text = buf_clone_enter
+                    .text(&line_start, &line_end, true)
+                    .to_string();
+                let trimmed = line_text.trim();
+
+                if trimmed.starts_with("```") {
+                    let start_offset = line_start.offset();
+                    let end_offset = line_end.offset();
+                    if try_trigger_code_block(
+                        &buf_clone_enter,
+                        &tv_clone_enter,
+                        &line_text,
+                        start_offset,
+                        end_offset,
+                    ) {
+                        return glib::Propagation::Stop;
+                    }
+                }
+
                 // Check for TASK| anchor on current line
                 let mut has_task_anchor = false;
                 let mut check_iter = line_start;
@@ -209,9 +248,6 @@ impl Editor {
                     return glib::Propagation::Stop;
                 }
 
-                let line_text = buf_clone_enter
-                    .text(&line_start, &line_end, true)
-                    .to_string();
                 let is_bullet_line = line_text.starts_with("• ")
                     || line_start
                         .tags()
@@ -335,10 +371,6 @@ impl Editor {
         popover_box.append(&link_btn);
 
         selection_popover.set_child(Some(&popover_box));
-
-        let current_note = Rc::new(RefCell::new(None));
-        let frontmatter = Rc::new(RefCell::new(None));
-        let is_loading = Rc::new(Cell::new(false));
 
         let buf_clone_table = text_buffer.clone();
         let tv_clone_table = text_view.clone();
@@ -665,4 +697,41 @@ impl Editor {
         });
         self.text_view.add_controller(drop_target);
     }
+}
+
+fn try_trigger_code_block(
+    buf: &TextBuffer,
+    tv: &TextView,
+    raw_prefix: &str,
+    start_offset: i32,
+    del_end_offset: i32,
+) -> bool {
+    let trimmed = raw_prefix.trim();
+    if !trimmed.starts_with("```") {
+        return false;
+    }
+    let lang_hint = trimmed.strip_prefix("```").unwrap_or("").trim();
+    if lang_hint.contains('`') || lang_hint.contains(' ') {
+        return false;
+    }
+
+    let mut del_start = buf.iter_at_offset(start_offset);
+    let mut del_end = buf.iter_at_offset(del_end_offset);
+    buf.delete(&mut del_start, &mut del_end);
+
+    let mut ins_iter = buf.iter_at_offset(start_offset);
+    let lang_opt = if lang_hint.is_empty() {
+        None
+    } else {
+        Some(lang_hint)
+    };
+
+    if let Some(sv) =
+        crate::markdown::render_code_block_widget(buf, tv, &mut ins_iter, "", lang_opt)
+    {
+        glib::idle_add_local_once(move || {
+            sv.grab_focus();
+        });
+    }
+    true
 }
