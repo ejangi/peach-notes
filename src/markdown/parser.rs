@@ -690,10 +690,19 @@ mod tests {
     use crate::markdown::renderers::resize_all_images_in_buffer;
     use std::fs;
 
+    fn init_gtk_for_tests() -> bool {
+        if !gtk4::is_initialized_main_thread() {
+            if gtk4::init().is_err() {
+                return false;
+            }
+        }
+        gdk4::Display::default().is_some()
+    }
+
     #[test]
     fn test_gfm_table_serialization_and_deserialization_roundtrip() {
         let input_md = "| Header 1 | Header 2 |\n| :--- | :---: |\n| Cell 1 | Cell 2 |\n";
-        if gtk4::init().is_ok() && gdk4::Display::default().is_some() {
+        if init_gtk_for_tests() {
             let buffer = TextBuffer::new(None);
             let text_view = TextView::new();
             let _ = parse_markdown_to_buffer(input_md, &buffer, &text_view, None);
@@ -728,7 +737,7 @@ mod tests {
         let path = std::path::Path::new("/home/ejangi/iCloud Drive/Documents/Notes/Agile.md");
         if path.exists() {
             let content = fs::read_to_string(path).unwrap();
-            if gtk4::init().is_ok() && gdk4::Display::default().is_some() {
+            if init_gtk_for_tests() {
                 let buffer = TextBuffer::new(None);
                 let text_view = TextView::new();
                 let parent_dir = path.parent();
@@ -769,7 +778,7 @@ mod tests {
 
     #[test]
     fn test_parse_test_md_with_image() {
-        if gtk4::init().is_ok() && gdk4::Display::default().is_some() {
+        if init_gtk_for_tests() {
             let buffer = TextBuffer::new(None);
             let text_view = TextView::new();
             let notes_dir = std::path::Path::new("/home/ejangi/Documents/Notes");
@@ -804,7 +813,7 @@ mod tests {
 
     #[test]
     fn test_resize_all_images_in_buffer() {
-        if gtk4::init().is_ok() && gdk4::Display::default().is_some() {
+        if init_gtk_for_tests() {
             let buffer = TextBuffer::new(None);
             let text_view = TextView::new();
             let mut iter = buffer.end_iter();
@@ -850,7 +859,7 @@ mod tests {
 
     #[test]
     fn test_list_item_serialization_and_deserialization_roundtrip() {
-        if gtk4::init().is_ok() {
+        if init_gtk_for_tests() {
             let buffer = TextBuffer::new(None);
             let text_view = TextView::new();
 

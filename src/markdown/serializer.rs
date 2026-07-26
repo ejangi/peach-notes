@@ -333,9 +333,18 @@ mod tests {
         assert_eq!(collapse_contiguous_links(input_empty), "");
     }
 
+    fn init_gtk_for_tests() -> bool {
+        if !gtk4::is_initialized_main_thread() {
+            if gtk4::init().is_err() {
+                return false;
+            }
+        }
+        gdk4::Display::default().is_some()
+    }
+
     #[test]
     fn test_image_anchor_serialization() {
-        if gtk4::init().is_ok() && gdk4::Display::default().is_some() {
+        if init_gtk_for_tests() {
             let buffer = TextBuffer::new(None);
             let mut iter = buffer.end_iter();
 

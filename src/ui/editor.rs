@@ -22,6 +22,7 @@ pub struct Editor {
     pub header_bar: HeaderBar,
     pub delete_button: Button,
     pub emoji_button: MenuButton,
+    pub table_button: Button,
     pub selection_popover: Popover,
     pub current_note: Rc<RefCell<Option<Note>>>,
     pub frontmatter: Rc<RefCell<Option<String>>>,
@@ -62,8 +63,15 @@ impl Editor {
             buf_clone_emoji.insert(&mut cursor_iter, emoji_str);
         });
 
+        let table_button = Button::builder()
+            .icon_name("insert-table-symbolic")
+            .tooltip_text("Insert Table")
+            .css_classes(vec!["flat".to_string()])
+            .build();
+
         header_bar.pack_end(&delete_button);
         header_bar.pack_end(&emoji_button);
+        header_bar.pack_end(&table_button);
         container.append(&header_bar);
 
         let text_view = TextView::builder()
@@ -247,6 +255,23 @@ impl Editor {
         let frontmatter = Rc::new(RefCell::new(None));
         let is_loading = Rc::new(Cell::new(false));
 
+        let buf_clone_table = text_buffer.clone();
+        let tv_clone_table = text_view.clone();
+        table_button.connect_clicked(move |_| {
+            let default_table = crate::markdown::TableData {
+                alignments: vec!["none".to_string(), "none".to_string()],
+                headers: vec!["Header 1".to_string(), "Header 2".to_string()],
+                rows: vec![vec!["Cell 1".to_string(), "Cell 2".to_string()]],
+            };
+            let mut cursor_iter = buf_clone_table.iter_at_offset(buf_clone_table.cursor_position());
+            crate::markdown::render_table_widget(
+                &buf_clone_table,
+                &tv_clone_table,
+                &mut cursor_iter,
+                &default_table,
+            );
+        });
+
         let editor = Self {
             container,
             overlay,
@@ -255,6 +280,7 @@ impl Editor {
             header_bar,
             delete_button,
             emoji_button,
+            table_button,
             selection_popover,
             current_note,
             frontmatter,
