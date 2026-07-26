@@ -134,8 +134,8 @@ pub fn setup_text_buffer_tags(buffer: &TextBuffer) {
             .name("heading-1")
             .weight(pango::Weight::Bold.into_glib())
             .scale(1.6)
-            .pixels_above_lines(16)
-            .pixels_below_lines(16)
+            .pixels_above_lines(24)
+            .pixels_below_lines(20)
             .build();
         tag_table.add(&tag);
     }
@@ -145,8 +145,8 @@ pub fn setup_text_buffer_tags(buffer: &TextBuffer) {
             .name("heading-2")
             .weight(pango::Weight::Bold.into_glib())
             .scale(1.3)
-            .pixels_above_lines(12)
-            .pixels_below_lines(12)
+            .pixels_above_lines(20)
+            .pixels_below_lines(16)
             .build();
         tag_table.add(&tag);
     }
@@ -156,8 +156,16 @@ pub fn setup_text_buffer_tags(buffer: &TextBuffer) {
             .name("heading-3")
             .weight(pango::Weight::Bold.into_glib())
             .scale(1.15)
-            .pixels_above_lines(8)
-            .pixels_below_lines(8)
+            .pixels_above_lines(16)
+            .pixels_below_lines(12)
+            .build();
+        tag_table.add(&tag);
+    }
+
+    if tag_table.lookup("paragraph").is_none() {
+        let tag = gtk4::TextTag::builder()
+            .name("paragraph")
+            .pixels_below_lines(20)
             .build();
         tag_table.add(&tag);
     }
@@ -225,7 +233,7 @@ pub fn setup_text_buffer_tags(buffer: &TextBuffer) {
     if tag_table.lookup("bullet-list").is_none() {
         let tag = gtk4::TextTag::builder()
             .name("bullet-list")
-            .pixels_below_lines(2)
+            .pixels_below_lines(3)
             .build();
         tag_table.add(&tag);
     }
@@ -239,7 +247,10 @@ pub fn setup_text_buffer_tags(buffer: &TextBuffer) {
     }
 
     if tag_table.lookup("ordered-list").is_none() {
-        let tag = gtk4::TextTag::builder().name("ordered-list").build();
+        let tag = gtk4::TextTag::builder()
+            .name("ordered-list")
+            .pixels_below_lines(3)
+            .build();
         tag_table.add(&tag);
     }
 
@@ -677,16 +688,14 @@ pub fn parse_markdown_to_buffer(
                 }
             }
             Event::Start(Tag::Paragraph) => {
-                if !in_metadata && !in_code_block && !in_image && !in_table {
+                if !in_metadata && !in_code_block && !in_image && !in_table && !in_list_item {
                     active_tags.push("paragraph".to_string());
                 }
             }
             Event::End(TagEnd::Paragraph) => {
-                if !in_metadata && !in_code_block && !in_image && !in_table {
+                if !in_metadata && !in_code_block && !in_image && !in_table && !in_list_item {
                     active_tags.retain(|t| t != "paragraph");
-                    if !in_list_item {
-                        buffer.insert(&mut buffer.end_iter(), "\n");
-                    }
+                    buffer.insert(&mut buffer.end_iter(), "\n");
                 }
             }
             _ => {}

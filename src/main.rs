@@ -59,7 +59,7 @@ fn load_css() {
             border-radius: 8px;
             padding: 12px 16px;
             margin-top: 8px;
-            margin-bottom: 12px;
+            margin-bottom: 20px;
             border: 1px solid alpha(@window_fg_color, 0.12);
         }
 
@@ -72,7 +72,7 @@ fn load_css() {
 
         .note-image-container {
             margin-top: 12px;
-            margin-bottom: 16px;
+            margin-bottom: 20px;
             border-radius: 8px;
         }
 
@@ -96,7 +96,7 @@ fn load_css() {
             border-radius: 10px;
             padding: 10px 14px;
             margin-top: 8px;
-            margin-bottom: 12px;
+            margin-bottom: 20px;
             border: 1px solid alpha(@window_fg_color, 0.12);
         }
 
@@ -112,7 +112,7 @@ fn load_css() {
 
         .note-table-container {
             margin-top: 10px;
-            margin-bottom: 14px;
+            margin-bottom: 20px;
         }
 
         .note-table-grid {
