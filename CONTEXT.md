@@ -40,3 +40,7 @@ A dedicated subdirectory named `<note title>.assets` stored directly alongside i
 ### File Attachment
 Any non-image file asset (e.g. document, archive, media) dropped into or linked within a Note, stored inside the Note Assets Directory and rendered as an interactive attachment card.
 
+### Application State
+The persisted runtime configuration and UI layout memory (including Notes Directory path, un-maximized window width and height, maximized window state, and last opened Note identifier) preserved between application sessions.
+
+

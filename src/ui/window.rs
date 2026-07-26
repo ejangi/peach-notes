@@ -55,6 +55,8 @@ impl MainWindow {
             window.maximize();
         }
 
+        let initial_note_id = config.borrow().last_opened_note.clone();
+
         let main_win = Self {
             window,
             sidebar,
@@ -62,7 +64,7 @@ impl MainWindow {
             storage,
             config,
             notes: Rc::new(RefCell::new(Vec::new())),
-            selected_note_id: Rc::new(RefCell::new(None)),
+            selected_note_id: Rc::new(RefCell::new(initial_note_id)),
             save_version: Rc::new(Cell::new(0)),
         };
 
@@ -91,20 +93,28 @@ impl MainWindow {
             None
         };
 
+        let mut note_found = false;
         if let Some(ref target_id) = curr_selected {
-            let mut child = self.sidebar.list_box.first_child();
-            while let Some(row_widget) = child {
-                if row_widget.widget_name().as_str() == target_id.as_str() {
-                    if let Ok(row) = row_widget.downcast::<gtk4::ListBoxRow>() {
-                        self.sidebar.list_box.select_row(Some(&row));
-                    }
-                    break;
-                }
-                child = row_widget.next_sibling();
+            if notes_list.iter().any(|n| n.id == *target_id) {
+                note_found = true;
+                self.select_note(target_id);
             }
-        } else if let Some(first_note) = notes_list.first() {
-            let first_id = first_note.id.clone();
-            self.select_note(&first_id);
+        }
+
+        if !note_found {
+            if let Some(first_note) = notes_list.first() {
+                let first_id = first_note.id.clone();
+                self.select_note(&first_id);
+            } else {
+                if let Ok(mut id_ref) = self.selected_note_id.try_borrow_mut() {
+                    *id_ref = None;
+                }
+                if let Ok(mut cfg) = self.config.try_borrow_mut() {
+                    cfg.last_opened_note = None;
+                    let _ = cfg.save();
+                }
+                self.editor.clear();
+            }
         }
     }
 
@@ -140,6 +150,13 @@ impl MainWindow {
                     if let Ok(new_storage) = StorageManager::new(new_path) {
                         if let Ok(mut s) = win_clone.storage.try_borrow_mut() {
                             *s = new_storage;
+                            if let Ok(mut cfg) = win_clone.config.try_borrow_mut() {
+                                cfg.last_opened_note = None;
+                                let _ = cfg.save();
+                            }
+                            if let Ok(mut selected) = win_clone.selected_note_id.try_borrow_mut() {
+                                *selected = None;
+                            }
                             win_clone.editor.clear();
                             win_clone.refresh_notes();
                         }
@@ -189,11 +206,67 @@ impl MainWindow {
             if let Some(note) = note_opt {
                 if let Ok(storage) = win.storage.try_borrow() {
                     let _ = storage.delete_note(&note);
+                    if let Ok(mut cfg) = win.config.try_borrow_mut() {
+                        cfg.last_opened_note = None;
+                        let _ = cfg.save();
+                    }
+                    if let Ok(mut selected) = win.selected_note_id.try_borrow_mut() {
+                        *selected = None;
+                    }
                     win.editor.clear();
                     win.refresh_notes();
                 }
             }
         });
+
+        let win = self.clone();
+        let window_config_version = Rc::new(Cell::new(0u64));
+
+        let schedule_window_state_save = move |window: &ApplicationWindow| {
+            let is_maximized = window.is_maximized();
+            let width = window.default_width();
+            let height = window.default_height();
+
+            let version = window_config_version.get() + 1;
+            window_config_version.set(version);
+
+            let win_inner = win.clone();
+            let version_inner = window_config_version.clone();
+
+            glib::timeout_add_local_once(Duration::from_millis(500), move || {
+                if version_inner.get() == version {
+                    if let Ok(mut cfg) = win_inner.config.try_borrow_mut() {
+                        let mut changed = false;
+                        if cfg.is_maximized != is_maximized {
+                            cfg.is_maximized = is_maximized;
+                            changed = true;
+                        }
+                        if !is_maximized {
+                            if width > 0 && cfg.window_width != width {
+                                cfg.window_width = width;
+                                changed = true;
+                            }
+                            if height > 0 && cfg.window_height != height {
+                                cfg.window_height = height;
+                                changed = true;
+                            }
+                        }
+                        if changed {
+                            let _ = cfg.save();
+                        }
+                    }
+                }
+            });
+        };
+
+        let save_cb1 = schedule_window_state_save.clone();
+        self.window.connect_default_width_notify(move |w| save_cb1(w));
+
+        let save_cb2 = schedule_window_state_save.clone();
+        self.window.connect_default_height_notify(move |w| save_cb2(w));
+
+        let save_cb3 = schedule_window_state_save;
+        self.window.connect_maximized_notify(move |w| save_cb3(w));
 
         let win = self.clone();
         // Listen for system theme dark/light mode toggle
@@ -352,6 +425,13 @@ impl MainWindow {
     fn select_note(&self, note_id: &str) {
         if let Ok(mut selected_id) = self.selected_note_id.try_borrow_mut() {
             *selected_id = Some(note_id.to_string());
+        }
+
+        if let Ok(mut cfg) = self.config.try_borrow_mut() {
+            if cfg.last_opened_note.as_deref() != Some(note_id) {
+                cfg.last_opened_note = Some(note_id.to_string());
+                let _ = cfg.save();
+            }
         }
 
         let mut child = self.sidebar.list_box.first_child();

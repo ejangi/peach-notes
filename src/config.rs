@@ -9,6 +9,8 @@ pub struct AppConfig {
     pub window_width: i32,
     pub window_height: i32,
     pub is_maximized: bool,
+    #[serde(default)]
+    pub last_opened_note: Option<String>,
 }
 
 impl Default for AppConfig {
@@ -23,6 +25,7 @@ impl Default for AppConfig {
             window_width: 900,
             window_height: 650,
             is_maximized: false,
+            last_opened_note: None,
         }
     }
 }
@@ -75,5 +78,15 @@ mod tests {
         assert_eq!(config.window_width, 900);
         assert_eq!(config.window_height, 650);
         assert!(!config.is_maximized);
+        assert_eq!(config.last_opened_note, None);
+    }
+
+    #[test]
+    fn test_last_opened_note_serialization() {
+        let mut config = AppConfig::default();
+        config.last_opened_note = Some("meeting-notes.md".to_string());
+        let json = serde_json::to_string(&config).unwrap();
+        let deserialized: AppConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.last_opened_note, Some("meeting-notes.md".to_string()));
     }
 }
