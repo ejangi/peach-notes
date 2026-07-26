@@ -52,12 +52,12 @@ jobs:
       - name: Package Debian/Ubuntu (.deb)
         run: |
           cargo deb --no-build
-          cp target/debian/peach-notes_${VERSION}_amd64.deb ./peach-notes_${VERSION}_amd64.deb || cp target/debian/*.deb ./peach-notes_${VERSION}_amd64.deb
+          cp target/debian/*.deb ./peach-notes_${VERSION}_amd64.deb
 
       - name: Package Fedora/RedHat (.rpm)
         run: |
           cargo generate-rpm --target-dir target
-          cp target/generate-rpm/peach-notes-${VERSION}-1.x86_64.rpm ./peach-notes-${VERSION}-1.x86_64.rpm || cp target/generate-rpm/*.rpm ./peach-notes-${VERSION}-1.x86_64.rpm
+          cp target/generate-rpm/*.rpm ./peach-notes-${VERSION}-1.x86_64.rpm
 
       - name: Package Arch Linux/Manjaro (.zip)
         run: |

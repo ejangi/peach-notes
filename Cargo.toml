@@ -1,7 +1,8 @@
 [package]
 name = "peach-notes"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2021"
+license = "MIT"
 authors = ["Peach Notes Contributors"]
 description = "A native GNOME desktop notes application backed by local Markdown files."
 
