@@ -334,12 +334,10 @@ mod tests {
     }
 
     fn init_gtk_for_tests() -> bool {
-        if !gtk4::is_initialized_main_thread() {
-            if gtk4::init().is_err() {
-                return false;
-            }
+        if gtk4::is_initialized() {
+            return gtk4::is_initialized_main_thread() && gdk4::Display::default().is_some();
         }
-        gdk4::Display::default().is_some()
+        gtk4::init().is_ok() && gdk4::Display::default().is_some()
     }
 
     #[test]

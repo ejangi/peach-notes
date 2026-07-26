@@ -1,9 +1,11 @@
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Box as GtkBox, Button, Entry, Grid, MenuButton, Orientation, Overlay, Popover,
-    TextBuffer, TextView,
+    Align, Box as GtkBox, Button, Entry, EventControllerKey, Grid, MenuButton, Orientation,
+    Overlay, Popover, TextBuffer, TextView,
 };
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TableData {
@@ -99,7 +101,7 @@ pub fn render_table_widget(
     let json_payload = serde_json::to_string(table_data).unwrap_or_default();
     main_box.set_widget_name(&format!("TABLE|{}", json_payload));
 
-    build_table_ui(&main_box, table_data, buffer, text_view);
+    build_table_ui(&main_box, table_data, buffer, text_view, None);
 
     text_view.add_child_at_anchor(&main_box, &anchor);
     text_view.queue_resize();
@@ -118,6 +120,7 @@ fn build_table_ui(
     table_data: &TableData,
     buffer: &TextBuffer,
     text_view: &TextView,
+    focus_target: Option<(usize, usize)>,
 ) {
     // Clear existing children
     while let Some(child) = main_box.first_child() {
@@ -130,7 +133,7 @@ fn build_table_ui(
         .css_classes(vec!["note-table-grid".to_string()])
         .build();
 
-    let data_ref = std::rc::Rc::new(std::cell::RefCell::new(table_data.clone()));
+    let data_ref = Rc::new(RefCell::new(table_data.clone()));
     let main_box_clone = main_box.clone();
     let buffer_clone = buffer.clone();
     let text_view_clone = text_view.clone();
@@ -152,9 +155,15 @@ fn build_table_ui(
         let main_box_clone = main_box_clone.clone();
         let buffer_clone = buffer_clone.clone();
         let text_view_clone = text_view_clone.clone();
-        move || {
+        move |target: Option<(usize, usize)>| {
             let curr = data_ref.borrow().clone();
-            build_table_ui(&main_box_clone, &curr, &buffer_clone, &text_view_clone);
+            build_table_ui(
+                &main_box_clone,
+                &curr,
+                &buffer_clone,
+                &text_view_clone,
+                target,
+            );
             if let Ok(json) = serde_json::to_string(&curr) {
                 main_box_clone.set_widget_name(&format!("TABLE|{}", json));
                 buffer_clone.emit_by_name::<()>("changed", &[]);
@@ -165,6 +174,15 @@ fn build_table_ui(
 
     let num_cols = table_data.headers.len();
     let num_rows = table_data.rows.len();
+
+    // Matrix of entries for keyboard navigation
+    // Row 0 = headers, Row 1..N = data rows
+    let total_matrix_rows = 1 + num_rows;
+    let entries_matrix: Rc<RefCell<Vec<Vec<Entry>>>> =
+        Rc::new(RefCell::new(vec![
+            vec![Entry::new(); num_cols];
+            total_matrix_rows
+        ]));
 
     // 1. Headers Row (Grid row 0)
     for (col_idx, header_text) in table_data.headers.iter().enumerate() {
@@ -181,6 +199,10 @@ fn build_table_ui(
             .css_classes(vec!["note-table-input".to_string()])
             .hexpand(true)
             .build();
+
+        if let Ok(mut matrix) = entries_matrix.try_borrow_mut() {
+            matrix[0][col_idx] = entry.clone();
+        }
 
         let align_str = table_data
             .alignments
@@ -260,7 +282,7 @@ fn build_table_ui(
                 }
             }
             drop(d);
-            rebuild_acr();
+            rebuild_acr(Some((0, new_idx)));
         });
 
         // Add Column Left
@@ -282,7 +304,7 @@ fn build_table_ui(
                 row.insert(col_idx, String::new());
             }
             drop(d);
-            rebuild_acl();
+            rebuild_acl(Some((0, col_idx)));
         });
 
         pop_box.append(&add_col_right_btn);
@@ -312,8 +334,9 @@ fn build_table_ui(
                         }
                     }
                 }
+                let target_c = col_idx.min(d.headers.len().saturating_sub(1));
                 drop(d);
-                rebuild_del_col();
+                rebuild_del_col(Some((0, target_c)));
             });
 
             pop_box.append(&del_col_btn);
@@ -348,6 +371,12 @@ fn build_table_ui(
                 .css_classes(vec!["note-table-input".to_string()])
                 .hexpand(true)
                 .build();
+
+            if let Ok(mut matrix) = entries_matrix.try_borrow_mut() {
+                if r_idx + 1 < matrix.len() && c_idx < matrix[r_idx + 1].len() {
+                    matrix[r_idx + 1][c_idx] = entry.clone();
+                }
+            }
 
             let align_str = table_data
                 .alignments
@@ -420,7 +449,7 @@ fn build_table_ui(
                         d.rows.push(vec![String::new(); col_count]);
                     }
                     drop(d);
-                    rebuild_arb();
+                    rebuild_arb(Some((new_idx + 1, 0)));
                 });
 
                 // Add Row Above
@@ -438,7 +467,7 @@ fn build_table_ui(
                     let col_count = d.headers.len();
                     d.rows.insert(r_idx, vec![String::new(); col_count]);
                     drop(d);
-                    rebuild_ara();
+                    rebuild_ara(Some((r_idx + 1, 0)));
                 });
 
                 pop_box.append(&add_row_below_btn);
@@ -460,8 +489,9 @@ fn build_table_ui(
                         if r_idx < d.rows.len() {
                             d.rows.remove(r_idx);
                         }
+                        let target_r = (r_idx + 1).min(d.rows.len());
                         drop(d);
-                        rebuild_del_row();
+                        rebuild_del_row(Some((target_r, 0)));
                     });
 
                     pop_box.append(&del_row_btn);
@@ -476,5 +506,84 @@ fn build_table_ui(
         }
     }
 
+    // Attach Tab & Shift+Tab keyboard navigation controllers to entries
+    if let Ok(matrix) = entries_matrix.try_borrow() {
+        for (m_r, row) in matrix.iter().enumerate() {
+            for (m_c, entry) in row.iter().enumerate() {
+                let key_controller = EventControllerKey::new();
+                let rebuild_tab = rebuild_all.clone();
+                let data_tab = data_ref.clone();
+                let matrix_ref = entries_matrix.clone();
+
+                key_controller.connect_key_pressed(move |_, keyval, _keycode, state| {
+                    let is_shift = state.contains(gdk4::ModifierType::SHIFT_MASK);
+                    if keyval == gdk4::Key::Tab || keyval == gdk4::Key::ISO_Left_Tab {
+                        if is_shift {
+                            // Shift+Tab: Move backward
+                            if m_c > 0 {
+                                if let Ok(m) = matrix_ref.try_borrow() {
+                                    if let Some(prev) = m.get(m_r).and_then(|r| r.get(m_c - 1)) {
+                                        prev.grab_focus();
+                                    }
+                                }
+                            } else if m_r > 0 {
+                                if let Ok(m) = matrix_ref.try_borrow() {
+                                    if let Some(prev_row) = m.get(m_r - 1) {
+                                        if let Some(last_cell) = prev_row.last() {
+                                            last_cell.grab_focus();
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            // Tab: Move forward
+                            let row_len = if let Ok(m) = matrix_ref.try_borrow() {
+                                m.get(m_r).map(|r| r.len()).unwrap_or(0)
+                            } else {
+                                0
+                            };
+
+                            if m_c + 1 < row_len {
+                                if let Ok(m) = matrix_ref.try_borrow() {
+                                    if let Some(next) = m.get(m_r).and_then(|r| r.get(m_c + 1)) {
+                                        next.grab_focus();
+                                    }
+                                }
+                            } else if m_r + 1 < total_matrix_rows {
+                                if let Ok(m) = matrix_ref.try_borrow() {
+                                    if let Some(next_row) = m.get(m_r + 1) {
+                                        if let Some(first_cell) = next_row.first() {
+                                            first_cell.grab_focus();
+                                        }
+                                    }
+                                }
+                            } else {
+                                // Very last cell of the table! Add a new row and focus its first cell
+                                let mut d = data_tab.borrow_mut();
+                                let col_count = d.headers.len();
+                                d.rows.push(vec![String::new(); col_count]);
+                                let new_r_idx = d.rows.len(); // Row index 1..N
+                                drop(d);
+                                rebuild_tab(Some((new_r_idx, 0)));
+                            }
+                        }
+                        return glib::Propagation::Stop;
+                    }
+                    glib::Propagation::Proceed
+                });
+                entry.add_controller(key_controller);
+            }
+        }
+    }
+
     main_box.append(&grid);
+
+    // Apply focus target if specified
+    if let Some((target_r, target_c)) = focus_target {
+        if let Ok(matrix) = entries_matrix.try_borrow() {
+            if let Some(target_entry) = matrix.get(target_r).and_then(|row| row.get(target_c)) {
+                target_entry.grab_focus();
+            }
+        }
+    }
 }
