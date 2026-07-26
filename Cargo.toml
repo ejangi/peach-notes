@@ -21,3 +21,27 @@ uuid = { version = "1.10", features = ["v4"] }
 regex = "1.10"
 log = "0.4"
 env_logger = "0.11"
+
+[package.metadata.deb]
+maintainer = "Peach Notes Contributors"
+copyright = "2026, Peach Notes Contributors"
+extended-description = "Peach Notes is a native GNOME desktop notes application built with Rust, GTK4, and Libadwaita."
+depends = "$auto, libgtk-4-1, libadwaita-1-0"
+section = "utility"
+priority = "optional"
+assets = [
+    ["target/release/peach-notes", "usr/bin/peach-notes", "755"],
+    ["assets/org.gnome.PeachNotes.desktop", "usr/share/applications/org.gnome.PeachNotes.desktop", "644"],
+    ["assets/icons/peach-notes-icon.png", "usr/share/icons/hicolor/256x256/apps/peach-notes-icon.png", "644"],
+]
+
+[package.metadata.rpm]
+package = "peach-notes"
+summary = "A native GNOME desktop notes application backed by local Markdown files."
+description = "Peach Notes is a native GNOME desktop notes application built with Rust, GTK4, and Libadwaita."
+license = "MIT"
+assets = [
+    { source = "target/release/peach-notes", dest = "/usr/bin/peach-notes", mode = "755" },
+    { source = "assets/org.gnome.PeachNotes.desktop", dest = "/usr/share/applications/org.gnome.PeachNotes.desktop", mode = "644" },
+    { source = "assets/icons/peach-notes-icon.png", dest = "/usr/share/icons/hicolor/256x256/apps/peach-notes-icon.png", mode = "644" },
+]

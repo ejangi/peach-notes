@@ -1,0 +1,19 @@
+# Maintainer: Peach Notes Contributors
+pkgname=peach-notes-bin
+_pkgname=peach-notes
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="A native GNOME desktop notes application backed by local Markdown files."
+arch=('x86_64')
+url="https://github.com/ejangi/peach-notes"
+license=('MIT')
+depends=('gtk4' 'libadwaita')
+provides=('peach-notes')
+conflicts=('peach-notes')
+source=()
+
+package() {
+    install -Dm755 "${srcdir}/peach-notes" "${pkgdir}/usr/bin/peach-notes"
+    install -Dm644 "${srcdir}/org.gnome.PeachNotes.desktop" "${pkgdir}/usr/share/applications/org.gnome.PeachNotes.desktop"
+    install -Dm644 "${srcdir}/peach-notes-icon.png" "${pkgdir}/usr/share/icons/hicolor/256x256/apps/peach-notes-icon.png"
+}

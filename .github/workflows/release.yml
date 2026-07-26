@@ -1,0 +1,79 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build Packages and Create Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install System Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            pkg-config \
+            libgtk-4-dev \
+            libadwaita-1-dev \
+            zip
+
+      - name: Install Cargo Packaging Tools
+        run: |
+          cargo install cargo-deb --locked
+          cargo install cargo-generate-rpm --locked
+
+      - name: Extract Tag Version
+        id: get_version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+
+      - name: Build Release Binary
+        run: cargo build --release
+
+      - name: Package Debian/Ubuntu (.deb)
+        run: |
+          cargo deb --no-build
+          cp target/debian/peach-notes_${VERSION}_amd64.deb ./peach-notes_${VERSION}_amd64.deb || cp target/debian/*.deb ./peach-notes_${VERSION}_amd64.deb
+
+      - name: Package Fedora/RedHat (.rpm)
+        run: |
+          cargo generate-rpm --target-dir target
+          cp target/generate-rpm/peach-notes-${VERSION}-1.x86_64.rpm ./peach-notes-${VERSION}-1.x86_64.rpm || cp target/generate-rpm/*.rpm ./peach-notes-${VERSION}-1.x86_64.rpm
+
+      - name: Package Arch Linux/Manjaro (.zip)
+        run: |
+          mkdir -p arch-pkg
+          cp target/release/peach-notes arch-pkg/
+          cp assets/org.gnome.PeachNotes.desktop arch-pkg/
+          cp assets/icons/peach-notes-icon.png arch-pkg/
+          cp packaging/arch/PKGBUILD arch-pkg/
+          sed -i "s/pkgver=.*/pkgver=${VERSION}/" arch-pkg/PKGBUILD
+          (cd arch-pkg && zip -r ../peach-notes-v${VERSION}-arch-x86_64.zip .)
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            peach-notes_${{ env.VERSION }}_amd64.deb
+            peach-notes-${{ env.VERSION }}-1.x86_64.rpm
+            peach-notes-v${{ env.VERSION }}-arch-x86_64.zip
+          generate_release_notes: true
