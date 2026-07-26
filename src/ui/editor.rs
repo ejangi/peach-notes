@@ -5,8 +5,8 @@ use crate::markdown::{
 use gtk4::prelude::*;
 use gtk4::{glib, graphene};
 use gtk4::{
-    Box as GtkBox, Button, Orientation, Overlay, Popover, PositionType, ScrolledWindow, TextBuffer,
-    TextView,
+    Box as GtkBox, Button, Label, MenuButton, Orientation, Overlay, Popover, PositionType,
+    ScrolledWindow, TextBuffer, TextView,
 };
 use libadwaita::prelude::*;
 use libadwaita::HeaderBar;
@@ -21,6 +21,7 @@ pub struct Editor {
     pub text_buffer: TextBuffer,
     pub header_bar: HeaderBar,
     pub delete_button: Button,
+    pub emoji_button: MenuButton,
     pub selection_popover: Popover,
     pub current_note: Rc<RefCell<Option<Note>>>,
     pub frontmatter: Rc<RefCell<Option<String>>>,
@@ -41,12 +42,29 @@ impl Editor {
             .css_classes(vec!["destructive-action".to_string()])
             .build();
 
-        header_bar.pack_end(&delete_button);
-        container.append(&header_bar);
-
         // TextView & Buffer inside ScrolledWindow
         let text_buffer = TextBuffer::new(None);
         setup_text_buffer_tags(&text_buffer);
+
+        let emoji_chooser = gtk4::EmojiChooser::new();
+        let emoji_button = MenuButton::builder()
+            .tooltip_text("Insert Emoji")
+            .popover(&emoji_chooser)
+            .css_classes(vec!["flat".to_string()])
+            .build();
+
+        let emoji_label = Label::new(Some("😀"));
+        emoji_button.set_child(Some(&emoji_label));
+
+        let buf_clone_emoji = text_buffer.clone();
+        emoji_chooser.connect_emoji_picked(move |_, emoji_str| {
+            let mut cursor_iter = buf_clone_emoji.iter_at_offset(buf_clone_emoji.cursor_position());
+            buf_clone_emoji.insert(&mut cursor_iter, emoji_str);
+        });
+
+        header_bar.pack_end(&delete_button);
+        header_bar.pack_end(&emoji_button);
+        container.append(&header_bar);
 
         let text_view = TextView::builder()
             .buffer(&text_buffer)
@@ -236,6 +254,7 @@ impl Editor {
             text_buffer,
             header_bar,
             delete_button,
+            emoji_button,
             selection_popover,
             current_note,
             frontmatter,

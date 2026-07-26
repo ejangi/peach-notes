@@ -110,6 +110,55 @@ fn load_css() {
             color: alpha(@window_fg_color, 0.6);
         }
 
+        .note-table-container {
+            margin-top: 10px;
+            margin-bottom: 14px;
+        }
+
+        .note-table-grid {
+            border-spacing: 0px;
+        }
+
+        .note-table-cell-header {
+            background-color: alpha(@window_fg_color, 0.08);
+            border: 1px solid alpha(@window_fg_color, 0.15);
+            font-weight: bold;
+        }
+
+        .note-table-cell-data {
+            background-color: alpha(@window_fg_color, 0.02);
+            border: 1px solid alpha(@window_fg_color, 0.12);
+        }
+
+        .note-table-input {
+            border: none;
+            background: transparent;
+            box-shadow: none;
+            outline: none;
+            color: @window_fg_color;
+            padding: 6px 28px 6px 10px;
+            font-size: 14px;
+            min-width: 70px;
+        }
+
+        .note-table-input:focus {
+            background-color: alpha(@accent_bg_color, 0.12);
+            border-radius: 4px;
+        }
+
+        .note-table-overlay-menu {
+            opacity: 0.35;
+            padding: 2px;
+            min-width: 22px;
+            min-height: 22px;
+            margin: 2px;
+        }
+
+        .note-table-overlay-menu:hover {
+            opacity: 1.0;
+            background-color: alpha(@window_fg_color, 0.15);
+        }
+
         popover.selection-toolbar,
         popover.selection-toolbar > contents,
         popover.selection-toolbar contents {

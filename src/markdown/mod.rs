@@ -1,9 +1,11 @@
 pub mod parser;
+pub mod renderers;
 pub mod serializer;
 
-pub use parser::{
-    create_or_get_link_tag, parse_markdown_to_buffer, render_attachment_widget,
-    render_image_widget, resize_all_images_in_buffer, setup_text_buffer_tags,
+pub use parser::{create_or_get_link_tag, parse_markdown_to_buffer, setup_text_buffer_tags};
+pub use renderers::{
+    render_attachment_widget, render_image_widget, render_table_widget,
+    resize_all_images_in_buffer, TableData,
 };
 pub use serializer::serialize_buffer_to_markdown;
 

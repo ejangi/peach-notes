@@ -1,7 +1,10 @@
 use crate::domain::Note;
+use crate::markdown::renderers::{
+    render_attachment_widget, render_image_widget, render_table_widget, TableData,
+};
 use glib::translate::IntoGlib;
 use gtk4::prelude::*;
-use gtk4::{Align, Box as GtkBox, Button, Label, Orientation, TextBuffer, TextView};
+use gtk4::{Box as GtkBox, Label, Orientation, TextBuffer, TextView};
 use pulldown_cmark::{Event, HeadingLevel, Options, Tag, TagEnd};
 use std::path::Path;
 
@@ -299,8 +302,67 @@ pub fn parse_markdown_to_buffer(
     let mut code_block_accumulator = String::new();
     let mut extracted_frontmatter = String::new();
 
+    let mut in_table = false;
+    let mut current_table: Option<TableData> = None;
+    let mut current_table_row: Option<Vec<String>> = None;
+    let mut current_cell_text = String::new();
+
     for event in parser {
         match event {
+            Event::Start(Tag::Table(alignments)) => {
+                if !in_metadata {
+                    in_table = true;
+                    current_table = Some(TableData::new(alignments));
+                }
+            }
+            Event::End(TagEnd::Table) => {
+                if !in_metadata && in_table {
+                    in_table = false;
+                    if let Some(table) = current_table.take() {
+                        render_table_widget(buffer, text_view, &mut buffer.end_iter(), &table);
+                    }
+                }
+            }
+            Event::Start(Tag::TableHead) => {
+                if !in_metadata {
+                    current_table_row = Some(Vec::new());
+                }
+            }
+            Event::End(TagEnd::TableHead) => {
+                if !in_metadata {
+                    if let Some(row) = current_table_row.take() {
+                        if let Some(ref mut table) = current_table {
+                            table.headers = row;
+                        }
+                    }
+                }
+            }
+            Event::Start(Tag::TableRow) => {
+                if !in_metadata {
+                    current_table_row = Some(Vec::new());
+                }
+            }
+            Event::End(TagEnd::TableRow) => {
+                if !in_metadata {
+                    if let Some(row) = current_table_row.take() {
+                        if let Some(ref mut table) = current_table {
+                            table.rows.push(row);
+                        }
+                    }
+                }
+            }
+            Event::Start(Tag::TableCell) => {
+                if !in_metadata {
+                    current_cell_text.clear();
+                }
+            }
+            Event::End(TagEnd::TableCell) => {
+                if !in_metadata {
+                    if let Some(ref mut row) = current_table_row {
+                        row.push(current_cell_text.trim().to_string());
+                    }
+                }
+            }
             Event::Start(Tag::MetadataBlock(_)) => {
                 in_metadata = true;
             }
@@ -541,6 +603,8 @@ pub fn parse_markdown_to_buffer(
             Event::Code(text) => {
                 if in_code_block {
                     code_block_accumulator.push_str(&text);
+                } else if in_table {
+                    current_cell_text.push_str(&text);
                 } else if !in_metadata {
                     let start_offset = buffer.end_iter().offset();
                     buffer.insert(&mut buffer.end_iter(), &text);
@@ -554,6 +618,8 @@ pub fn parse_markdown_to_buffer(
             Event::Text(text) => {
                 if in_metadata {
                     extracted_frontmatter.push_str(&text);
+                } else if in_table {
+                    current_cell_text.push_str(&text);
                 } else if in_code_block {
                     code_block_accumulator.push_str(&text);
                 } else if in_image {
@@ -586,6 +652,8 @@ pub fn parse_markdown_to_buffer(
             Event::SoftBreak | Event::HardBreak => {
                 if in_metadata {
                     extracted_frontmatter.push('\n');
+                } else if in_table {
+                    current_cell_text.push(' ');
                 } else if in_code_block {
                     code_block_accumulator.push('\n');
                 } else {
@@ -593,12 +661,12 @@ pub fn parse_markdown_to_buffer(
                 }
             }
             Event::Start(Tag::Paragraph) => {
-                if !in_metadata && !in_code_block && !in_image {
+                if !in_metadata && !in_code_block && !in_image && !in_table {
                     active_tags.push("paragraph".to_string());
                 }
             }
             Event::End(TagEnd::Paragraph) => {
-                if !in_metadata && !in_code_block && !in_image {
+                if !in_metadata && !in_code_block && !in_image && !in_table {
                     active_tags.retain(|t| t != "paragraph");
                     if !in_list_item {
                         buffer.insert(&mut buffer.end_iter(), "\n");
@@ -616,241 +684,25 @@ pub fn parse_markdown_to_buffer(
     }
 }
 
-pub fn render_image_widget(
-    buffer: &TextBuffer,
-    text_view: &TextView,
-    iter: &mut gtk4::TextIter,
-    image_dest_url: &str,
-    image_alt_text: &str,
-    notes_dir: Option<&Path>,
-) {
-    let end_offset = iter.offset();
-    if end_offset > 0 {
-        let mut check_iter = *iter;
-        check_iter.backward_char();
-        if check_iter.char() != '\n' {
-            buffer.insert(iter, "\n");
-        }
-    }
-
-    let anchor_offset = iter.offset();
-    let anchor = buffer.create_child_anchor(iter);
-    buffer.insert(iter, "\n");
-
-    let container_box = GtkBox::builder()
-        .orientation(Orientation::Vertical)
-        .hexpand(true)
-        .css_classes(vec!["note-image-container".to_string()])
-        .build();
-
-    container_box.set_widget_name(&format!("IMG|{}|{}", image_dest_url, image_alt_text));
-
-    let decoded_url = decode_percent_url(image_dest_url);
-    let raw_path = Path::new(&decoded_url);
-    let image_path = if raw_path.is_absolute() {
-        raw_path.to_path_buf()
-    } else if let Some(dir) = notes_dir {
-        dir.join(&decoded_url)
-    } else {
-        raw_path.to_path_buf()
-    };
-
-    if image_path.exists() {
-        let picture = gtk4::Picture::new();
-        if gdk4::Display::default().is_some() {
-            if let Ok(texture) = gdk4::Texture::from_filename(&image_path) {
-                let p_w = texture.width();
-                let p_h = texture.height();
-                let tv_w = text_view.width();
-                let max_w = if tv_w > 50 { (tv_w - 48).max(100) } else { 580 };
-                let (disp_w, disp_h) = if p_w > max_w {
-                    let ratio = max_w as f64 / p_w as f64;
-                    (max_w, (p_h as f64 * ratio) as i32)
-                } else {
-                    (p_w, p_h)
-                };
-                picture.set_paintable(Some(&texture));
-                picture.set_size_request(disp_w, disp_h);
-            }
-        }
-        picture.set_content_fit(gtk4::ContentFit::ScaleDown);
-        picture.set_can_shrink(true);
-        picture.set_hexpand(true);
-        picture.set_halign(Align::Center);
-        container_box.append(&picture);
-    } else {
-        let placeholder_label = Label::builder()
-            .label(&format!("📷 Missing Image: {}", image_dest_url))
-            .css_classes(vec!["note-image-missing".to_string()])
-            .build();
-        container_box.append(&placeholder_label);
-    }
-
-    if !image_alt_text.is_empty() {
-        let caption = Label::builder()
-            .label(image_alt_text)
-            .css_classes(vec!["note-image-caption".to_string()])
-            .build();
-        container_box.append(&caption);
-    }
-
-    text_view.add_child_at_anchor(&container_box, &anchor);
-    text_view.queue_resize();
-    text_view.queue_draw();
-
-    let start_iter = buffer.iter_at_offset(anchor_offset);
-    let mut end_iter = buffer.iter_at_offset(anchor_offset);
-    end_iter.forward_char();
-    if let Some(tag) = buffer.tag_table().lookup("image") {
-        buffer.apply_tag(&tag, &start_iter, &end_iter);
-    }
-}
-
-pub fn render_attachment_widget(
-    buffer: &TextBuffer,
-    text_view: &TextView,
-    iter: &mut gtk4::TextIter,
-    link_dest_url: &str,
-    link_text: &str,
-    notes_dir: Option<&Path>,
-) {
-    let end_offset = iter.offset();
-    if end_offset > 0 {
-        let mut check_iter = *iter;
-        check_iter.backward_char();
-        if check_iter.char() != '\n' {
-            buffer.insert(iter, "\n");
-        }
-    }
-
-    let anchor_offset = iter.offset();
-    let anchor = buffer.create_child_anchor(iter);
-    buffer.insert(iter, "\n");
-
-    let container_box = GtkBox::builder()
-        .orientation(Orientation::Horizontal)
-        .spacing(12)
-        .hexpand(true)
-        .css_classes(vec!["note-attachment-container".to_string()])
-        .build();
-
-    let clean_title = link_text
-        .strip_prefix("📎 ")
-        .unwrap_or(link_text)
-        .to_string();
-
-    container_box.set_widget_name(&format!("ATTACHMENT|{}|{}", link_dest_url, clean_title));
-
-    let icon_label = Label::builder()
-        .label("📎")
-        .css_classes(vec!["note-attachment-icon".to_string()])
-        .build();
-
-    let text_vbox = GtkBox::builder()
-        .orientation(Orientation::Vertical)
-        .spacing(2)
-        .hexpand(true)
-        .halign(Align::Start)
-        .build();
-
-    let title_label = Label::builder()
-        .label(&clean_title)
-        .halign(Align::Start)
-        .css_classes(vec!["note-attachment-title".to_string()])
-        .build();
-
-    let decoded_url = decode_percent_url(link_dest_url);
-    let full_file_path = if let Some(dir) = notes_dir {
-        dir.join(&decoded_url)
-    } else {
-        Path::new(&decoded_url).to_path_buf()
-    };
-
-    let size_str = if let Ok(meta) = std::fs::metadata(&full_file_path) {
-        Note::format_file_size(meta.len())
-    } else {
-        "File Attachment".to_string()
-    };
-
-    let size_label = Label::builder()
-        .label(&size_str)
-        .halign(Align::Start)
-        .css_classes(vec!["note-attachment-size".to_string()])
-        .build();
-
-    text_vbox.append(&title_label);
-    text_vbox.append(&size_label);
-
-    let open_button = Button::builder()
-        .label("Open")
-        .icon_name("external-link-symbolic")
-        .tooltip_text("Open Attachment")
-        .build();
-
-    let target_path_clone = full_file_path.clone();
-    open_button.connect_clicked(move |_| {
-        if target_path_clone.exists() {
-            let _ = std::process::Command::new("xdg-open")
-                .arg(&target_path_clone)
-                .spawn();
-        }
-    });
-
-    container_box.append(&icon_label);
-    container_box.append(&text_vbox);
-    container_box.append(&open_button);
-
-    text_view.add_child_at_anchor(&container_box, &anchor);
-    text_view.queue_resize();
-    text_view.queue_draw();
-
-    let start_iter = buffer.iter_at_offset(anchor_offset);
-    let mut end_iter = buffer.iter_at_offset(anchor_offset);
-    end_iter.forward_char();
-    if let Some(tag) = buffer.tag_table().lookup("image") {
-        buffer.apply_tag(&tag, &start_iter, &end_iter);
-    }
-}
-pub fn resize_all_images_in_buffer(buffer: &TextBuffer, max_w: i32) {
-    let mut iter = buffer.start_iter();
-    while iter.offset() < buffer.end_iter().offset() {
-        if let Some(anchor) = iter.child_anchor() {
-            for widget in anchor.widgets() {
-                if widget.has_css_class("note-image-container") {
-                    if let Ok(container_box) = widget.clone().downcast::<GtkBox>() {
-                        let mut img_child = container_box.first_child();
-                        while let Some(ic) = img_child {
-                            if let Ok(picture) = ic.clone().downcast::<gtk4::Picture>() {
-                                if let Some(paintable) = picture.paintable() {
-                                    let p_w = paintable.intrinsic_width();
-                                    let p_h = paintable.intrinsic_height();
-                                    if p_w > 0 && p_h > 0 {
-                                        let (disp_w, disp_h) = if p_w > max_w {
-                                            let ratio = max_w as f64 / p_w as f64;
-                                            (max_w, (p_h as f64 * ratio) as i32)
-                                        } else {
-                                            (p_w, p_h)
-                                        };
-                                        picture.set_size_request(disp_w, disp_h);
-                                    }
-                                }
-                            }
-                            img_child = ic.next_sibling();
-                        }
-                    }
-                }
-            }
-        }
-        if !iter.forward_char() {
-            break;
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::markdown::renderers::resize_all_images_in_buffer;
     use std::fs;
+
+    #[test]
+    fn test_gfm_table_serialization_and_deserialization_roundtrip() {
+        let input_md = "| Header 1 | Header 2 |\n| :--- | :---: |\n| Cell 1 | Cell 2 |\n";
+        if gtk4::init().is_ok() && gdk4::Display::default().is_some() {
+            let buffer = TextBuffer::new(None);
+            let text_view = TextView::new();
+            let _ = parse_markdown_to_buffer(input_md, &buffer, &text_view, None);
+            let serialized = crate::markdown::serialize_buffer_to_markdown(&buffer, None);
+            assert!(serialized.contains("Header 1"));
+            assert!(serialized.contains("Cell 1"));
+            assert!(serialized.contains(":---"));
+        }
+    }
 
     #[test]
     fn test_image_asset_file_setup() {

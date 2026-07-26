@@ -54,6 +54,15 @@ pub fn serialize_buffer_to_markdown(buffer: &TextBuffer, frontmatter: Option<&st
                                 handled = true;
                                 break;
                             }
+                        } else if name.starts_with("TABLE|") {
+                            let json_str = name.trim_start_matches("TABLE|");
+                            if let Ok(table_data) =
+                                serde_json::from_str::<crate::markdown::TableData>(json_str)
+                            {
+                                result.push_str(&table_data.to_markdown());
+                                handled = true;
+                                break;
+                            }
                         } else if let Ok(container) = widget.clone().downcast::<Label>() {
                             let code_text = container.text().to_string();
                             if !code_text.is_empty() {
