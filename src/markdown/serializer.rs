@@ -63,6 +63,13 @@ pub fn serialize_buffer_to_markdown(buffer: &TextBuffer, frontmatter: Option<&st
                                 handled = true;
                                 break;
                             }
+                        } else if name.starts_with("TASK|") {
+                            if name == "TASK|[x]" {
+                                result.push_str("- [x] ");
+                            } else {
+                                result.push_str("- [ ] ");
+                            }
+                            // Don't mark handled = true so the line text after task anchor is serialized
                         } else if let Ok(container) = widget.clone().downcast::<Label>() {
                             let code_text = container.text().to_string();
                             if !code_text.is_empty() {
@@ -98,7 +105,8 @@ pub fn serialize_buffer_to_markdown(buffer: &TextBuffer, frontmatter: Option<&st
                 continue;
             }
 
-            let line_text = buffer.text(&line_start, &line_end, true).to_string();
+            let raw_line_text = buffer.text(&line_start, &line_end, true).to_string();
+            let line_text = raw_line_text.trim_start_matches('\u{FFFC}').to_string();
             if line_text.is_empty() && line_idx < line_count - 1 {
                 result.push('\n');
                 continue;

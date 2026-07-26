@@ -89,17 +89,46 @@ impl Editor {
         text_view.add_css_class("card");
 
         let buf_clone_trigger = text_buffer.clone();
+        let tv_clone_trigger = text_view.clone();
         text_buffer.connect_insert_text(move |_buf, _iter, text| {
             if text.contains(' ') {
                 let buf = buf_clone_trigger.clone();
+                let tv = tv_clone_trigger.clone();
                 glib::idle_add_local_once(move || {
                     let cursor_offset = buf.cursor_position();
                     let cursor_iter = buf.iter_at_offset(cursor_offset);
                     let mut line_start = cursor_iter;
                     line_start.set_line_offset(0);
 
-                    let line_prefix = buf.text(&line_start, &cursor_iter, true).to_string();
-                    if line_prefix == "* " || line_prefix == "- " {
+                    let raw_prefix = buf.text(&line_start, &cursor_iter, true).to_string();
+                    let trimmed = raw_prefix.trim();
+                    let is_task_unchecked = trimmed == "- [ ]"
+                        || trimmed == "* [ ]"
+                        || trimmed == "• [ ]"
+                        || trimmed == "[ ]";
+                    let is_task_checked = trimmed == "- [x]"
+                        || trimmed == "* [x]"
+                        || trimmed == "• [x]"
+                        || trimmed == "[x]"
+                        || trimmed == "- [X]"
+                        || trimmed == "* [X]"
+                        || trimmed == "• [X]"
+                        || trimmed == "[X]";
+
+                    if is_task_unchecked || is_task_checked {
+                        let start_offset = line_start.offset();
+                        let mut del_start = buf.iter_at_offset(start_offset);
+                        let mut del_end = buf.iter_at_offset(cursor_offset);
+                        buf.delete(&mut del_start, &mut del_end);
+
+                        let mut ins_iter = buf.iter_at_offset(start_offset);
+                        crate::markdown::render_task_item_widget(
+                            &buf,
+                            &tv,
+                            &mut ins_iter,
+                            is_task_checked,
+                        );
+                    } else if trimmed == "*" || trimmed == "-" {
                         let start_offset = line_start.offset();
                         let mut del_start = buf.iter_at_offset(start_offset);
                         let mut del_end = buf.iter_at_offset(cursor_offset);
@@ -119,7 +148,9 @@ impl Editor {
         });
 
         let buf_clone_enter = text_buffer.clone();
+        let tv_clone_enter = text_view.clone();
         let key_controller = gtk4::EventControllerKey::new();
+        key_controller.set_propagation_phase(gtk4::PropagationPhase::Capture);
         key_controller.connect_key_pressed(move |_, keyval, _keycode, _state| {
             if keyval == gdk4::Key::Return || keyval == gdk4::Key::KP_Enter {
                 let cursor_offset = buf_clone_enter.cursor_position();
@@ -129,6 +160,50 @@ impl Editor {
                 let mut line_end = cursor_iter;
                 if !line_end.ends_line() {
                     line_end.forward_to_line_end();
+                }
+
+                // Check for TASK| anchor on current line
+                let mut has_task_anchor = false;
+                let mut check_iter = line_start;
+                while check_iter.offset() <= line_end.offset() {
+                    if let Some(anchor) = check_iter.child_anchor() {
+                        for widget in anchor.widgets() {
+                            if widget.widget_name().starts_with("TASK|") {
+                                has_task_anchor = true;
+                                break;
+                            }
+                        }
+                    }
+                    if has_task_anchor || !check_iter.forward_char() {
+                        break;
+                    }
+                }
+
+                if has_task_anchor {
+                    let line_text = buf_clone_enter
+                        .text(&line_start, &line_end, true)
+                        .to_string();
+                    let clean_text = line_text.trim_start_matches('\u{FFFC}').trim();
+
+                    if clean_text.is_empty() {
+                        // Empty task item + Enter -> Delete task line and exit task list
+                        let mut del_start = line_start;
+                        let mut del_end = line_end;
+                        buf_clone_enter.delete(&mut del_start, &mut del_end);
+                    } else {
+                        // Non-empty task item + Enter -> Create new task item on next line
+                        let mut ins_iter = buf_clone_enter.iter_at_offset(cursor_offset);
+                        buf_clone_enter.insert(&mut ins_iter, "\n");
+                        let mut new_iter =
+                            buf_clone_enter.iter_at_offset(buf_clone_enter.cursor_position());
+                        crate::markdown::render_task_item_widget(
+                            &buf_clone_enter,
+                            &tv_clone_enter,
+                            &mut new_iter,
+                            false,
+                        );
+                    }
+                    return glib::Propagation::Stop;
                 }
 
                 let line_text = buf_clone_enter
@@ -240,6 +315,12 @@ impl Editor {
             .css_classes(vec!["flat".to_string()])
             .build();
 
+        let task_btn = Button::builder()
+            .label("☑")
+            .tooltip_text("Task List Item")
+            .css_classes(vec!["flat".to_string()])
+            .build();
+
         popover_box.append(&bold_btn);
         popover_box.append(&italic_btn);
         popover_box.append(&strike_btn);
@@ -247,6 +328,7 @@ impl Editor {
         popover_box.append(&h1_btn);
         popover_box.append(&h2_btn);
         popover_box.append(&h3_btn);
+        popover_box.append(&task_btn);
         popover_box.append(&link_btn);
 
         selection_popover.set_child(Some(&popover_box));
@@ -288,7 +370,7 @@ impl Editor {
         };
 
         editor.setup_selection_callbacks(
-            bold_btn, italic_btn, strike_btn, code_btn, h1_btn, h2_btn, h3_btn, link_btn,
+            bold_btn, italic_btn, strike_btn, code_btn, h1_btn, h2_btn, h3_btn, task_btn, link_btn,
         );
 
         let buf_clone = editor.text_buffer.clone();
@@ -353,6 +435,7 @@ impl Editor {
         h1_btn: Button,
         h2_btn: Button,
         h3_btn: Button,
+        task_btn: Button,
         link_btn: Button,
     ) {
         let view = self.text_view.clone();
@@ -462,6 +545,18 @@ impl Editor {
         let buffer = self.text_buffer.clone();
         h3_btn.connect_clicked(move |_| {
             Self::apply_line_tag(&buffer, "heading-3");
+        });
+
+        let buffer = self.text_buffer.clone();
+        let view = self.text_view.clone();
+        task_btn.connect_clicked(move |_| {
+            let mut iter = if let Some((start, _)) = buffer.selection_bounds() {
+                start
+            } else {
+                buffer.iter_at_offset(buffer.cursor_position())
+            };
+            iter.set_line_offset(0);
+            crate::markdown::render_task_item_widget(&buffer, &view, &mut iter, false);
         });
 
         let buffer = self.text_buffer.clone();

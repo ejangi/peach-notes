@@ -1,6 +1,7 @@
 use crate::domain::Note;
 use crate::markdown::renderers::{
-    render_attachment_widget, render_image_widget, render_table_widget, TableData,
+    render_attachment_widget, render_image_widget, render_table_widget, render_task_item_widget,
+    TableData,
 };
 use glib::translate::IntoGlib;
 use gtk4::prelude::*;
@@ -111,6 +112,22 @@ pub fn setup_text_buffer_tags(buffer: &TextBuffer) {
     } else {
         gdk4::RGBA::new(0.10, 0.40, 0.80, 1.0)
     };
+
+    let task_done_fg = if is_dark {
+        gdk4::RGBA::new(1.0, 1.0, 1.0, 0.45)
+    } else {
+        gdk4::RGBA::new(0.0, 0.0, 0.0, 0.45)
+    };
+
+    if let Some(tag) = tag_table.lookup("task-done") {
+        tag.set_foreground_rgba(Some(&task_done_fg));
+    } else {
+        let tag = gtk4::TextTag::builder()
+            .name("task-done")
+            .foreground_rgba(&task_done_fg)
+            .build();
+        tag_table.add(&tag);
+    }
 
     if tag_table.lookup("heading-1").is_none() {
         let tag = gtk4::TextTag::builder()
@@ -382,6 +399,20 @@ pub fn parse_markdown_to_buffer(
                     list_stack.pop();
                 }
             }
+            Event::TaskListMarker(checked) => {
+                if !in_metadata {
+                    let mut end_iter = buffer.end_iter();
+                    let end_offset = end_iter.offset();
+                    if end_offset >= 2 {
+                        let mut start_iter = buffer.iter_at_offset(end_offset - 2);
+                        let prev_str = buffer.text(&start_iter, &end_iter, true);
+                        if prev_str == "• " || prev_str == "- " || prev_str == "* " {
+                            buffer.delete(&mut start_iter, &mut end_iter);
+                        }
+                    }
+                    render_task_item_widget(buffer, text_view, &mut buffer.end_iter(), checked);
+                }
+            }
             Event::Start(Tag::Image { dest_url, .. }) => {
                 if !in_metadata {
                     in_image = true;
@@ -575,16 +606,6 @@ pub fn parse_markdown_to_buffer(
                     }
                 }
             }
-            Event::TaskListMarker(checked) => {
-                if !in_metadata {
-                    if checked {
-                        buffer.insert(&mut buffer.end_iter(), "☑ ");
-                        active_tags.push("task-done".to_string());
-                    } else {
-                        buffer.insert(&mut buffer.end_iter(), "☐ ");
-                    }
-                }
-            }
             Event::End(TagEnd::Item) => {
                 if !in_metadata {
                     in_list_item = false;
@@ -708,6 +729,19 @@ mod tests {
             assert!(serialized.contains("Header 1"));
             assert!(serialized.contains("Cell 1"));
             assert!(serialized.contains(":---"));
+        }
+    }
+
+    #[test]
+    fn test_gfm_task_item_serialization_and_deserialization_roundtrip() {
+        let input_md = "- [ ] Task 1\n- [x] Task 2\n";
+        if init_gtk_for_tests() {
+            let buffer = TextBuffer::new(None);
+            let text_view = TextView::new();
+            let _ = parse_markdown_to_buffer(input_md, &buffer, &text_view, None);
+            let serialized = crate::markdown::serialize_buffer_to_markdown(&buffer, None);
+            assert!(serialized.contains("- [ ] Task 1"));
+            assert!(serialized.contains("- [x] Task 2"));
         }
     }
 

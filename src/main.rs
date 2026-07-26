@@ -159,6 +159,22 @@ fn load_css() {
             background-color: alpha(@window_fg_color, 0.15);
         }
 
+        .note-task-container {
+            margin-top: 3px;
+            margin-bottom: -3px;
+            margin-right: 4px;
+            padding: 0px;
+            min-height: 16px;
+        }
+
+        .note-task-check,
+        .note-task-check check {
+            min-height: 16px;
+            min-width: 16px;
+            margin: 0px;
+            padding: 0px;
+        }
+
         popover.selection-toolbar,
         popover.selection-toolbar > contents,
         popover.selection-toolbar contents {
