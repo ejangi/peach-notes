@@ -29,6 +29,20 @@ fn extract_code_text_from_widget(widget: &gtk4::Widget) -> String {
     String::new()
 }
 
+fn ensure_block_separation(result: &mut String) {
+    if result.is_empty() {
+        return;
+    }
+    if result.ends_with("\n\n") {
+        return;
+    }
+    if result.ends_with('\n') {
+        result.push('\n');
+    } else {
+        result.push_str("\n\n");
+    }
+}
+
 pub fn serialize_buffer_to_markdown(buffer: &TextBuffer, frontmatter: Option<&str>) -> String {
     let mut result = String::new();
 
@@ -41,6 +55,8 @@ pub fn serialize_buffer_to_markdown(buffer: &TextBuffer, frontmatter: Option<&st
     }
 
     let line_count = buffer.line_count();
+    let mut in_list = false;
+    let mut in_quote = false;
 
     for line_idx in 0..line_count {
         if let Some(line_start) = buffer.iter_at_line(line_idx) {
@@ -60,7 +76,10 @@ pub fn serialize_buffer_to_markdown(buffer: &TextBuffer, frontmatter: Option<&st
                             if parts.len() >= 2 {
                                 let url = parts[1];
                                 let alt = if parts.len() == 3 { parts[2] } else { "" };
-                                result.push_str(&format!("![{}]({})\n", alt, url));
+                                ensure_block_separation(&mut result);
+                                result.push_str(&format!("![{}]({})", alt, url));
+                                in_list = false;
+                                in_quote = false;
                                 handled = true;
                                 break;
                             }
@@ -78,7 +97,10 @@ pub fn serialize_buffer_to_markdown(buffer: &TextBuffer, frontmatter: Option<&st
                                 } else {
                                     format!("📎 {}", text)
                                 };
-                                result.push_str(&format!("[{}]({})\n", display_text, url));
+                                ensure_block_separation(&mut result);
+                                result.push_str(&format!("[{}]({})", display_text, url));
+                                in_list = false;
+                                in_quote = false;
                                 handled = true;
                                 break;
                             }
@@ -87,28 +109,20 @@ pub fn serialize_buffer_to_markdown(buffer: &TextBuffer, frontmatter: Option<&st
                             if let Ok(table_data) =
                                 serde_json::from_str::<crate::markdown::TableData>(json_str)
                             {
-                                result.push_str(&table_data.to_markdown());
+                                ensure_block_separation(&mut result);
+                                result.push_str(table_data.to_markdown().trim_end());
+                                in_list = false;
+                                in_quote = false;
                                 handled = true;
                                 break;
                             }
                         } else if name.starts_with("TASK|") {
-                            if name == "TASK|[x]" {
-                                result.push_str("- [x] ");
-                            } else {
-                                result.push_str("- [ ] ");
-                            }
-                            // Don't mark handled = true so the line text after task anchor is serialized
+                            // TASK| anchor will be handled inline during list item processing
                         } else if name.starts_with("CODE_BLOCK|") {
                             let lang = name.strip_prefix("CODE_BLOCK|").unwrap_or("");
                             let code_text = extract_code_text_from_widget(&widget);
 
-                            if !result.is_empty() && !result.ends_with("\n\n") {
-                                if result.ends_with('\n') {
-                                    result.push('\n');
-                                } else {
-                                    result.push_str("\n\n");
-                                }
-                            }
+                            ensure_block_separation(&mut result);
 
                             if lang.is_empty() {
                                 result.push_str("```\n");
@@ -116,22 +130,20 @@ pub fn serialize_buffer_to_markdown(buffer: &TextBuffer, frontmatter: Option<&st
                                 result.push_str(&format!("```{}\n", lang));
                             }
                             result.push_str(code_text.trim_end());
-                            result.push_str("\n```\n");
+                            result.push_str("\n```");
+                            in_list = false;
+                            in_quote = false;
                             handled = true;
                             break;
                         } else if let Ok(container) = widget.clone().downcast::<Label>() {
                             let code_text = container.text().to_string();
                             if !code_text.is_empty() {
-                                if !result.is_empty() && !result.ends_with("\n\n") {
-                                    if result.ends_with('\n') {
-                                        result.push('\n');
-                                    } else {
-                                        result.push_str("\n\n");
-                                    }
-                                }
+                                ensure_block_separation(&mut result);
                                 result.push_str("```\n");
                                 result.push_str(&code_text);
-                                result.push_str("\n```\n");
+                                result.push_str("\n```");
+                                in_list = false;
+                                in_quote = false;
                                 handled = true;
                                 break;
                             }
@@ -144,16 +156,12 @@ pub fn serialize_buffer_to_markdown(buffer: &TextBuffer, frontmatter: Option<&st
                                 let code_text =
                                     extract_code_text_from_widget(container.upcast_ref());
                                 if !code_text.is_empty() {
-                                    if !result.is_empty() && !result.ends_with("\n\n") {
-                                        if result.ends_with('\n') {
-                                            result.push('\n');
-                                        } else {
-                                            result.push_str("\n\n");
-                                        }
-                                    }
+                                    ensure_block_separation(&mut result);
                                     result.push_str("```\n");
                                     result.push_str(code_text.trim_end());
-                                    result.push_str("\n```\n");
+                                    result.push_str("\n```");
+                                    in_list = false;
+                                    in_quote = false;
                                     handled = true;
                                     break;
                                 }
@@ -173,8 +181,10 @@ pub fn serialize_buffer_to_markdown(buffer: &TextBuffer, frontmatter: Option<&st
 
             let raw_line_text = buffer.text(&line_start, &line_end, true).to_string();
             let line_text = raw_line_text.trim_start_matches('\u{FFFC}').to_string();
-            if line_text.is_empty() && line_idx < line_count - 1 {
-                result.push('\n');
+
+            if line_text.trim().is_empty() {
+                in_list = false;
+                in_quote = false;
                 continue;
             }
 
@@ -195,6 +205,62 @@ pub fn serialize_buffer_to_markdown(buffer: &TextBuffer, frontmatter: Option<&st
                 .iter()
                 .any(|t| t.name().as_deref() == Some("blockquote"));
 
+            let mut is_task = false;
+            let mut task_state = None;
+            let mut c_iter = line_start;
+            while c_iter.offset() <= line_end.offset() {
+                if let Some(anchor) = c_iter.child_anchor() {
+                    for w in anchor.widgets() {
+                        let w_name = w.widget_name();
+                        if w_name.starts_with("TASK|") {
+                            is_task = true;
+                            if w_name == "TASK|[x]" {
+                                task_state = Some("[x]");
+                            } else {
+                                task_state = Some("[ ]");
+                            }
+                            break;
+                        }
+                    }
+                }
+                if is_task || !c_iter.forward_char() || c_iter.offset() > line_end.offset() {
+                    break;
+                }
+            }
+
+            let is_list_item = is_bullet
+                || is_task
+                || line_text.starts_with("- ")
+                || line_text.starts_with("• ")
+                || line_text.starts_with("☑ ")
+                || line_text.starts_with("☐ ");
+
+            if is_list_item {
+                if in_list {
+                    if !result.ends_with('\n') {
+                        result.push('\n');
+                    }
+                } else {
+                    ensure_block_separation(&mut result);
+                }
+                in_list = true;
+                in_quote = false;
+            } else if is_quote || line_text.starts_with("> ") {
+                if in_quote {
+                    if !result.ends_with('\n') {
+                        result.push('\n');
+                    }
+                } else {
+                    ensure_block_separation(&mut result);
+                }
+                in_quote = true;
+                in_list = false;
+            } else {
+                ensure_block_separation(&mut result);
+                in_list = false;
+                in_quote = false;
+            }
+
             if is_h1 && !line_text.starts_with("# ") {
                 result.push_str("# ");
             } else if is_h2 && !line_text.starts_with("## ") {
@@ -209,17 +275,29 @@ pub fn serialize_buffer_to_markdown(buffer: &TextBuffer, frontmatter: Option<&st
 
             let (clean_line_text, prefix_char_len) =
                 if let Some(stripped) = line_text.strip_prefix("• ") {
-                    result.push_str("- ");
+                    if !is_bullet && !line_text.starts_with("- ") {
+                        result.push_str("- ");
+                    }
                     (stripped, "• ".chars().count())
                 } else if let Some(stripped) = line_text.strip_prefix("☑ ") {
-                    result.push_str("- [x] ");
+                    if task_state.is_none() {
+                        result.push_str("- [x] ");
+                    }
                     (stripped, "☑ ".chars().count())
                 } else if let Some(stripped) = line_text.strip_prefix("☐ ") {
-                    result.push_str("- [ ] ");
+                    if task_state.is_none() {
+                        result.push_str("- [ ] ");
+                    }
                     (stripped, "☐ ".chars().count())
                 } else {
                     (&line_text[..], 0)
                 };
+
+            if let Some(state) = task_state {
+                if !line_text.starts_with("- ") && !line_text.starts_with("• ") {
+                    result.push_str(&format!("- {} ", state));
+                }
+            }
 
             result.push_str(&serialize_line_inline(
                 buffer,
@@ -228,14 +306,14 @@ pub fn serialize_buffer_to_markdown(buffer: &TextBuffer, frontmatter: Option<&st
                 clean_line_text,
                 prefix_char_len,
             ));
-
-            if line_idx < line_count - 1 {
-                result.push('\n');
-            }
         }
     }
 
-    result
+    let mut final_result = result.trim_end().to_string();
+    if !final_result.is_empty() {
+        final_result.push('\n');
+    }
+    final_result
 }
 
 fn serialize_line_inline(
@@ -260,6 +338,11 @@ fn serialize_line_inline(
         let mut next_iter = curr_iter;
         if !next_iter.forward_char() || next_iter.offset() <= curr_iter.offset() {
             break;
+        }
+
+        if curr_iter.child_anchor().is_some() {
+            curr_iter = next_iter;
+            continue;
         }
 
         let slice = buffer.text(&curr_iter, &next_iter, true).to_string();
@@ -428,7 +511,47 @@ mod tests {
             text_view.add_child_at_anchor(&container_box, &anchor);
 
             let serialized = serialize_buffer_to_markdown(&buffer, None);
-            assert_eq!(serialized.trim(), "![Test Caption](MyNote.assets/test.png)");
+            assert_eq!(serialized, "![Test Caption](MyNote.assets/test.png)\n");
+        }
+    }
+
+    #[test]
+    fn test_block_spacing_headings_and_paragraphs() {
+        if init_gtk_for_tests() {
+            let buffer = TextBuffer::new(None);
+            let tag_table = buffer.tag_table();
+
+            let h1_tag = gtk4::TextTag::new(Some("heading-1"));
+            let h2_tag = gtk4::TextTag::new(Some("heading-2"));
+            tag_table.add(&h1_tag);
+            tag_table.add(&h2_tag);
+
+            let mut iter = buffer.end_iter();
+            buffer.insert_with_tags(&mut iter, "Title", &[&h1_tag]);
+            buffer.insert(&mut iter, "\nFirst paragraph line.\n\n");
+            buffer.insert_with_tags(&mut iter, "Subheading", &[&h2_tag]);
+            buffer.insert(&mut iter, "\nSecond paragraph line.");
+
+            let serialized = serialize_buffer_to_markdown(&buffer, None);
+            assert_eq!(
+                serialized,
+                "# Title\n\nFirst paragraph line.\n\n## Subheading\n\nSecond paragraph line.\n"
+            );
+        }
+    }
+
+    #[test]
+    fn test_block_spacing_with_frontmatter() {
+        if init_gtk_for_tests() {
+            let buffer = TextBuffer::new(None);
+            let mut iter = buffer.end_iter();
+            buffer.insert(&mut iter, "# Title\nParagraph content");
+
+            let serialized = serialize_buffer_to_markdown(&buffer, Some("title: Test Note"));
+            assert_eq!(
+                serialized,
+                "---\ntitle: Test Note\n---\n\n# Title\n\nParagraph content\n"
+            );
         }
     }
 }

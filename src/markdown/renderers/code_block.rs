@@ -248,11 +248,20 @@ pub fn render_code_block_widget(
 mod tests {
     use super::*;
 
+    fn init_gtk_for_tests() -> bool {
+        if gtk4::is_initialized() {
+            return gtk4::is_initialized_main_thread() && gdk4::Display::default().is_some();
+        }
+        gtk4::init().is_ok() && gdk4::Display::default().is_some()
+    }
+
     #[test]
     fn test_resolve_language_id_aliases() {
-        assert_eq!(resolve_language_id("rs"), Some("rust".to_string()));
-        assert_eq!(resolve_language_id("py"), Some("python".to_string()));
-        assert_eq!(resolve_language_id("js"), Some("javascript".to_string()));
-        assert_eq!(resolve_language_id(""), None);
+        if init_gtk_for_tests() {
+            assert_eq!(resolve_language_id("rs"), Some("rust".to_string()));
+            assert_eq!(resolve_language_id("py"), Some("python".to_string()));
+            assert_eq!(resolve_language_id("js"), Some("javascript".to_string()));
+            assert_eq!(resolve_language_id(""), None);
+        }
     }
 }

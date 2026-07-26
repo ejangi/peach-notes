@@ -22,6 +22,12 @@ A semantic styling marker (e.g., Heading 1, Heading 2, Bold, Italic, Monospace C
 ### Note Serializer
 The process that converts the text ranges and applied Formatting Tags of a Rich Text Buffer into valid Markdown content for disk storage.
 
+### Block Element
+A structural unit of content within a Note, such as Headings (`H1`–`H6`), Paragraphs, Fenced Code Blocks, Blockquotes, Tables, Image Cards, File Attachment Cards, or List Containers.
+
+### Block Spacing Rule
+The serialization policy enforced by the Note Serializer requiring every top-level Block Element in a Note's Markdown file to be separated from adjacent Block Elements by exactly one blank line (two newline characters `\n\n`). This ensures standardized document formatting on disk without introducing redundant empty lines or collapsing boundaries.
+
 ### Note Parser
 The process that parses Markdown content read from disk into formatted text ranges and Formatting Tags in the Rich Text Buffer.
 
