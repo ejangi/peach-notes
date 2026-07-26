@@ -36,9 +36,9 @@ jobs:
             zip
 
       - name: Install Cargo Packaging Tools
-        run: |
-          cargo install cargo-deb --locked
-          cargo install cargo-generate-rpm --locked
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deb,cargo-generate-rpm
 
       - name: Extract Tag Version
         id: get_version

@@ -35,11 +35,7 @@ assets = [
     ["assets/icons/peach-notes-icon.png", "usr/share/icons/hicolor/256x256/apps/peach-notes-icon.png", "644"],
 ]
 
-[package.metadata.rpm]
-package = "peach-notes"
-summary = "A native GNOME desktop notes application backed by local Markdown files."
-description = "Peach Notes is a native GNOME desktop notes application built with Rust, GTK4, and Libadwaita."
-license = "MIT"
+[package.metadata.generate-rpm]
 assets = [
     { source = "target/release/peach-notes", dest = "/usr/bin/peach-notes", mode = "755" },
     { source = "assets/org.gnome.PeachNotes.desktop", dest = "/usr/share/applications/org.gnome.PeachNotes.desktop", mode = "644" },
