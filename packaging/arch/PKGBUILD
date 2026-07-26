@@ -13,7 +13,7 @@ conflicts=('peach-notes')
 source=()
 
 package() {
-    install -Dm755 "${srcdir}/peach-notes" "${pkgdir}/usr/bin/peach-notes"
-    install -Dm644 "${srcdir}/org.gnome.PeachNotes.desktop" "${pkgdir}/usr/share/applications/org.gnome.PeachNotes.desktop"
-    install -Dm644 "${srcdir}/peach-notes-icon.png" "${pkgdir}/usr/share/icons/hicolor/256x256/apps/peach-notes-icon.png"
+    install -Dm755 "${startdir}/peach-notes" "${pkgdir}/usr/bin/peach-notes"
+    install -Dm644 "${startdir}/org.gnome.PeachNotes.desktop" "${pkgdir}/usr/share/applications/org.gnome.PeachNotes.desktop"
+    install -Dm644 "${startdir}/peach-notes-icon.png" "${pkgdir}/usr/share/icons/hicolor/256x256/apps/org.gnome.PeachNotes.png"
 }
