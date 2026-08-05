@@ -182,12 +182,6 @@ pub fn serialize_buffer_to_markdown(buffer: &TextBuffer, frontmatter: Option<&st
             let raw_line_text = buffer.text(&line_start, &line_end, true).to_string();
             let line_text = raw_line_text.trim_start_matches('\u{FFFC}').to_string();
 
-            if line_text.trim().is_empty() {
-                in_list = false;
-                in_quote = false;
-                continue;
-            }
-
             let tags = line_start.tags();
             let is_h1 = tags
                 .iter()
@@ -198,6 +192,24 @@ pub fn serialize_buffer_to_markdown(buffer: &TextBuffer, frontmatter: Option<&st
             let is_h3 = tags
                 .iter()
                 .any(|t| t.name().as_deref() == Some("heading-3"));
+
+            if line_text.trim().is_empty() {
+                if is_h1 {
+                    ensure_block_separation(&mut result);
+                    result.push_str("# ");
+                } else if is_h2 {
+                    ensure_block_separation(&mut result);
+                    result.push_str("## ");
+                } else if is_h3 {
+                    ensure_block_separation(&mut result);
+                    result.push_str("### ");
+                } else {
+                    in_list = false;
+                    in_quote = false;
+                    continue;
+                }
+            }
+
             let is_bullet = tags
                 .iter()
                 .any(|t| t.name().as_deref() == Some("bullet-list"));
@@ -491,10 +503,12 @@ mod tests {
     }
 
     fn init_gtk_for_tests() -> bool {
-        if gtk4::is_initialized() {
-            return gtk4::is_initialized_main_thread() && gdk4::Display::default().is_some();
+        if !gtk4::is_initialized() {
+            if gtk4::init().is_err() {
+                return false;
+            }
         }
-        gtk4::init().is_ok() && gdk4::Display::default().is_some()
+        gtk4::is_initialized_main_thread() && gdk4::Display::default().is_some()
     }
 
     #[test]
@@ -552,6 +566,20 @@ mod tests {
                 serialized,
                 "---\ntitle: Test Note\n---\n\n# Title\n\nParagraph content\n"
             );
+        }
+    }
+
+    #[test]
+    fn test_empty_heading_serialization() {
+        if init_gtk_for_tests() {
+            let buffer = TextBuffer::new(None);
+            crate::markdown::setup_text_buffer_tags(&buffer);
+            if let Some(h1_tag) = buffer.tag_table().lookup("heading-1") {
+                let mut iter = buffer.end_iter();
+                buffer.insert_with_tags(&mut iter, "\n", &[&h1_tag]);
+                let serialized = serialize_buffer_to_markdown(&buffer, None);
+                assert_eq!(serialized, "# \n");
+            }
         }
     }
 }

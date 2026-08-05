@@ -29,6 +29,12 @@ pub struct Editor {
     pub is_loading: Rc<Cell<bool>>,
 }
 
+impl Default for Editor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Editor {
     pub fn new() -> Self {
         let container = GtkBox::new(Orientation::Vertical, 0);
@@ -99,18 +105,33 @@ impl Editor {
             if loading_clone_trigger.get() {
                 return;
             }
+            let buf = buf_clone_trigger.clone();
+            let tv = tv_clone_trigger.clone();
             let text_str = text.to_string();
             let has_space = text_str.contains(' ');
             let has_backtick = text_str.contains('`');
-            if has_space || has_backtick {
-                let buf = buf_clone_trigger.clone();
-                let tv = tv_clone_trigger.clone();
-                glib::idle_add_local_once(move || {
-                    let cursor_offset = buf.cursor_position();
-                    let cursor_iter = buf.iter_at_offset(cursor_offset);
-                    let mut line_start = cursor_iter;
-                    line_start.set_line_offset(0);
 
+            glib::idle_add_local_once(move || {
+                let cursor_offset = buf.cursor_position();
+                let cursor_iter = buf.iter_at_offset(cursor_offset);
+                let mut line_start = cursor_iter;
+                line_start.set_line_offset(0);
+                let mut line_end = cursor_iter;
+                if !line_end.ends_line() {
+                    line_end.forward_to_line_end();
+                }
+                if line_end.ends_line() && !line_end.is_end() {
+                    line_end.forward_char();
+                }
+
+                // Maintain heading formatting on heading lines when typing
+                if let Some(ref tag_name) = Self::find_line_heading_tag(&buf, &cursor_iter) {
+                    if let Some(tag) = buf.tag_table().lookup(tag_name) {
+                        buf.apply_tag(&tag, &line_start, &line_end);
+                    }
+                }
+
+                if has_space || has_backtick {
                     let raw_prefix = buf.text(&line_start, &cursor_iter, true).to_string();
                     let trimmed = raw_prefix.trim();
 
@@ -163,8 +184,8 @@ impl Editor {
                             buf.apply_tag(&tag, &tag_start, &tag_end);
                         }
                     }
-                });
-            }
+                }
+            });
         });
 
         let buf_clone_enter = text_buffer.clone();
@@ -271,6 +292,31 @@ impl Editor {
                         }
                         return glib::Propagation::Stop;
                     }
+                }
+
+                if Self::find_line_heading_tag(&buf_clone_enter, &cursor_iter).is_some() {
+                    let mut ins_iter = buf_clone_enter.iter_at_offset(cursor_offset);
+                    buf_clone_enter.insert(&mut ins_iter, "\n");
+                    let new_offset = buf_clone_enter.cursor_position();
+                    let mut new_line_start = buf_clone_enter.iter_at_offset(new_offset);
+                    new_line_start.set_line_offset(0);
+                    let mut new_line_end = new_line_start;
+                    if !new_line_end.ends_line() {
+                        new_line_end.forward_to_line_end();
+                    }
+                    if new_line_end.ends_line() && !new_line_end.is_end() {
+                        new_line_end.forward_char();
+                    }
+                    if let Some(t1) = buf_clone_enter.tag_table().lookup("heading-1") {
+                        buf_clone_enter.remove_tag(&t1, &new_line_start, &new_line_end);
+                    }
+                    if let Some(t2) = buf_clone_enter.tag_table().lookup("heading-2") {
+                        buf_clone_enter.remove_tag(&t2, &new_line_start, &new_line_end);
+                    }
+                    if let Some(t3) = buf_clone_enter.tag_table().lookup("heading-3") {
+                        buf_clone_enter.remove_tag(&t3, &new_line_start, &new_line_end);
+                    }
+                    return glib::Propagation::Stop;
                 }
             }
             glib::Propagation::Proceed
@@ -433,6 +479,8 @@ impl Editor {
         if let Ok(mut fm_ref) = self.frontmatter.try_borrow_mut() {
             *fm_ref = fm;
         }
+        let start_iter = self.text_buffer.start_iter();
+        self.text_buffer.place_cursor(&start_iter);
         self.container.set_sensitive(true);
         self.is_loading.set(false);
     }
@@ -461,6 +509,7 @@ impl Editor {
         serialize_buffer_to_markdown(&self.text_buffer, fm.as_deref())
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn setup_selection_callbacks(
         &self,
         bold_btn: Button,
@@ -669,10 +718,48 @@ impl Editor {
         if !line_end.ends_line() {
             line_end.forward_to_line_end();
         }
+        if line_end.ends_line() && !line_end.is_end() {
+            line_end.forward_char();
+        }
+
+        if tag_name.starts_with("heading-") {
+            if let Some(t1) = buffer.tag_table().lookup("heading-1") {
+                buffer.remove_tag(&t1, &line_start, &line_end);
+            }
+            if let Some(t2) = buffer.tag_table().lookup("heading-2") {
+                buffer.remove_tag(&t2, &line_start, &line_end);
+            }
+            if let Some(t3) = buffer.tag_table().lookup("heading-3") {
+                buffer.remove_tag(&t3, &line_start, &line_end);
+            }
+        }
 
         if let Some(tag) = buffer.tag_table().lookup(tag_name) {
             buffer.apply_tag(&tag, &line_start, &line_end);
         }
+    }
+
+    fn find_line_heading_tag(_buffer: &TextBuffer, cursor_iter: &gtk4::TextIter) -> Option<String> {
+        let mut check_iter = *cursor_iter;
+        check_iter.set_line_offset(0);
+        let mut line_end = check_iter;
+        if !line_end.ends_line() {
+            line_end.forward_to_line_end();
+        }
+
+        loop {
+            for tag in check_iter.tags() {
+                if let Some(name) = tag.name() {
+                    if name == "heading-1" || name == "heading-2" || name == "heading-3" {
+                        return Some(name.to_string());
+                    }
+                }
+            }
+            if check_iter.offset() >= line_end.offset() || !check_iter.forward_char() {
+                break;
+            }
+        }
+        None
     }
 
     pub fn setup_drop_target<F>(&self, on_files_dropped: F)

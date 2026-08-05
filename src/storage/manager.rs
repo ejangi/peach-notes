@@ -73,7 +73,7 @@ impl StorageManager {
         };
 
         let content = if initial_body.trim().is_empty() {
-            format!("# {}\n\n", title_clean)
+            "# \n\n".to_string()
         } else if !initial_body.trim_start().starts_with('#') {
             format!("# {}\n\n{}", title_clean, initial_body)
         } else {
@@ -201,6 +201,16 @@ mod tests {
         assert_eq!(notes.len(), 2);
         assert_eq!(notes[0].title, "Second Note");
         assert_eq!(notes[1].title, "First Note");
+    }
+
+    #[test]
+    fn test_create_empty_note_heading() {
+        let test_dir = setup_test_dir("create_empty");
+        let manager = StorageManager::new(&test_dir).unwrap();
+
+        let note = manager.create_note("New Note", "").unwrap();
+        assert_eq!(note.title, "New Note");
+        assert_eq!(note.content, "# \n\n");
     }
 
     #[test]

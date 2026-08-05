@@ -341,6 +341,7 @@ pub fn parse_markdown_to_buffer(
     let mut code_block_accumulator = String::new();
     let mut code_block_lang: Option<String> = None;
     let mut extracted_frontmatter = String::new();
+    let mut heading_start_offset: Option<i32> = None;
 
     let mut in_table = false;
     let mut current_table: Option<TableData> = None;
@@ -513,6 +514,7 @@ pub fn parse_markdown_to_buffer(
                         buffer.insert(&mut buffer.end_iter(), "\n");
                     }
                 }
+                heading_start_offset = Some(buffer.end_iter().offset());
                 let tag_name = match level {
                     HeadingLevel::H1 => "heading-1",
                     HeadingLevel::H2 => "heading-2",
@@ -524,8 +526,26 @@ pub fn parse_markdown_to_buffer(
                 if in_metadata {
                     continue;
                 }
-                active_tags.retain(|t| t != "heading-1" && t != "heading-2" && t != "heading-3");
+                let start_off = heading_start_offset
+                    .take()
+                    .unwrap_or_else(|| buffer.end_iter().offset());
+                let heading_tag_name = active_tags
+                    .iter()
+                    .find(|t| *t == "heading-1" || *t == "heading-2" || *t == "heading-3")
+                    .cloned();
+
                 buffer.insert(&mut buffer.end_iter(), "\n");
+                let end_off = buffer.end_iter().offset();
+
+                if let Some(tag_name) = heading_tag_name {
+                    if let Some(tag) = buffer.tag_table().lookup(&tag_name) {
+                        let start_iter = buffer.iter_at_offset(start_off);
+                        let end_iter = buffer.iter_at_offset(end_off);
+                        buffer.apply_tag(&tag, &start_iter, &end_iter);
+                    }
+                }
+
+                active_tags.retain(|t| t != "heading-1" && t != "heading-2" && t != "heading-3");
             }
             Event::Start(Tag::BlockQuote(_)) => {
                 if !in_metadata {
@@ -701,16 +721,16 @@ pub fn parse_markdown_to_buffer(
                     buffer.insert(&mut buffer.end_iter(), "\n");
                 }
             }
-            Event::Start(Tag::Paragraph) => {
-                if !in_metadata && !in_code_block && !in_image && !in_table && !in_list_item {
-                    active_tags.push("paragraph".to_string());
-                }
+            Event::Start(Tag::Paragraph)
+                if !in_metadata && !in_code_block && !in_image && !in_table && !in_list_item =>
+            {
+                active_tags.push("paragraph".to_string());
             }
-            Event::End(TagEnd::Paragraph) => {
-                if !in_metadata && !in_code_block && !in_image && !in_table && !in_list_item {
-                    active_tags.retain(|t| t != "paragraph");
-                    buffer.insert(&mut buffer.end_iter(), "\n");
-                }
+            Event::End(TagEnd::Paragraph)
+                if !in_metadata && !in_code_block && !in_image && !in_table && !in_list_item =>
+            {
+                active_tags.retain(|t| t != "paragraph");
+                buffer.insert(&mut buffer.end_iter(), "\n");
             }
             _ => {}
         }
@@ -731,10 +751,12 @@ mod tests {
     use std::fs;
 
     fn init_gtk_for_tests() -> bool {
-        if gtk4::is_initialized() {
-            return gtk4::is_initialized_main_thread() && gdk4::Display::default().is_some();
+        if !gtk4::is_initialized() {
+            if gtk4::init().is_err() {
+                return false;
+            }
         }
-        gtk4::init().is_ok() && gdk4::Display::default().is_some()
+        gtk4::is_initialized_main_thread() && gdk4::Display::default().is_some()
     }
 
     #[test]

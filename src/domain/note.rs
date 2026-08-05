@@ -45,9 +45,8 @@ impl Note {
         if let Some(fm) = frontmatter {
             for line in fm.lines() {
                 let trimmed = line.trim();
-                if trimmed.starts_with("title:") {
-                    let val = trimmed["title:".len()..].trim();
-                    let unquoted = val.trim_matches(|c| c == '"' || c == '\'');
+                if let Some(val) = trimmed.strip_prefix("title:") {
+                    let unquoted = val.trim().trim_matches(|c| c == '"' || c == '\'');
                     if !unquoted.is_empty() {
                         return unquoted.to_string();
                     }
@@ -58,10 +57,10 @@ impl Note {
         // Search for first `# H1` heading in main content
         for line in main_content.lines() {
             let trimmed = line.trim();
-            if trimmed.starts_with("# ") {
-                let heading = trimmed[2..].trim();
-                if !heading.is_empty() {
-                    return heading.to_string();
+            if let Some(heading) = trimmed.strip_prefix("# ") {
+                let heading_trim = heading.trim();
+                if !heading_trim.is_empty() {
+                    return heading_trim.to_string();
                 }
             }
         }
@@ -77,8 +76,7 @@ impl Note {
     /// Split content into optional (frontmatter_body, main_markdown_body)
     pub fn split_frontmatter(content: &str) -> (Option<&str>, &str) {
         let trimmed = content.trim_start();
-        if trimmed.starts_with("---") {
-            let rest = &trimmed[3..];
+        if let Some(rest) = trimmed.strip_prefix("---") {
             if let Some(end_idx) = rest.find("\n---") {
                 let fm_content = &rest[..end_idx];
                 let main_body = &rest[end_idx + 4..];

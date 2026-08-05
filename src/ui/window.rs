@@ -137,6 +137,7 @@ impl MainWindow {
                 if let Ok(new_note) = storage.create_note("New Note", "") {
                     win.refresh_notes();
                     win.select_note(&new_note.id);
+                    win.editor.text_view.grab_focus();
                 }
             }
         });
@@ -355,7 +356,7 @@ impl MainWindow {
                                     let dialog = libadwaita::MessageDialog::builder()
                                         .transient_for(&win.window)
                                         .heading("Add Image Caption")
-                                        .body(&format!("Attached: {}", target_filename))
+                                        .body(format!("Attached: {}", target_filename))
                                         .build();
 
                                     let entry = gtk4::Entry::builder()

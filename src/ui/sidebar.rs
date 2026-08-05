@@ -16,6 +16,12 @@ pub struct Sidebar {
     pub is_populating: Rc<Cell<bool>>,
 }
 
+impl Default for Sidebar {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Sidebar {
     pub fn new() -> Self {
         let container = GtkBox::new(Orientation::Vertical, 0);
@@ -111,7 +117,7 @@ impl Sidebar {
                 .build();
 
             let preview_label = Label::builder()
-                .label(&note.preview())
+                .label(note.preview())
                 .halign(Align::Start)
                 .css_classes(vec!["dim-label".to_string(), "caption".to_string()])
                 .ellipsize(pango::EllipsizeMode::End)

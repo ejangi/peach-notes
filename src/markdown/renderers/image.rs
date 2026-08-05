@@ -67,7 +67,7 @@ pub fn render_image_widget(
         container_box.append(&picture);
     } else {
         let placeholder_label = Label::builder()
-            .label(&format!("📷 Missing Image: {}", image_dest_url))
+            .label(format!("📷 Missing Image: {}", image_dest_url))
             .css_classes(vec!["note-image-missing".to_string()])
             .build();
         container_box.append(&placeholder_label);
