@@ -6,14 +6,31 @@ pkgrel=1
 pkgdesc="A native GNOME desktop notes application backed by local Markdown files."
 arch=('x86_64')
 url="https://github.com/ejangi/peach-notes"
-license=('MIT')
+license=('GPL-2.0-only')
 depends=('gtk4' 'libadwaita' 'gtksourceview5')
 provides=('peach-notes')
 conflicts=('peach-notes')
-source=()
+source=(
+    "peach-notes"
+    "org.gnome.PeachNotes.desktop"
+    "README.md"
+)
+sha256sums=(
+    'SKIP'
+    'SKIP'
+    'SKIP'
+)
 
 package() {
-    install -Dm755 "${startdir}/peach-notes" "${pkgdir}/usr/bin/peach-notes"
-    install -Dm644 "${startdir}/org.gnome.PeachNotes.desktop" "${pkgdir}/usr/share/applications/org.gnome.PeachNotes.desktop"
-    install -Dm644 "${startdir}/peach-notes-icon.png" "${pkgdir}/usr/share/icons/hicolor/256x256/apps/org.gnome.PeachNotes.png"
+    install -Dm755 "${srcdir}/peach-notes" "${pkgdir}/usr/bin/peach-notes"
+    install -Dm644 "${srcdir}/org.gnome.PeachNotes.desktop" "${pkgdir}/usr/share/applications/org.gnome.PeachNotes.desktop"
+    install -Dm644 "${srcdir}/README.md" "${pkgdir}/usr/share/doc/${_pkgname}/README.md"
+
+    for size in 16 32 48 64 128 256 512; do
+        install -Dm644 "${startdir}/icons/hicolor/${size}x${size}/apps/org.gnome.PeachNotes.png" \
+            "${pkgdir}/usr/share/icons/hicolor/${size}x${size}/apps/org.gnome.PeachNotes.png"
+    done
+
+    install -Dm644 "${startdir}/icons/hicolor/256x256/apps/org.gnome.PeachNotes.png" \
+        "${pkgdir}/usr/share/pixmaps/org.gnome.PeachNotes.png"
 }

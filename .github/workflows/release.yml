@@ -65,8 +65,9 @@ jobs:
           mkdir -p arch-pkg
           cp target/release/peach-notes arch-pkg/
           cp assets/org.gnome.PeachNotes.desktop arch-pkg/
-          cp assets/icons/peach-notes-icon.png arch-pkg/
+          cp -r assets/icons arch-pkg/
           cp packaging/arch/PKGBUILD arch-pkg/
+          cp packaging/arch/README.md arch-pkg/
           sed -i "s/pkgver=.*/pkgver=${VERSION}/" arch-pkg/PKGBUILD
           (cd arch-pkg && zip -r ../peach-notes-v${VERSION}-arch-x86_64.zip .)
 
