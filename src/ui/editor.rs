@@ -465,6 +465,7 @@ impl Editor {
                 }
             });
 
+        editor.clear();
         editor
     }
 
@@ -481,7 +482,10 @@ impl Editor {
         }
         let start_iter = self.text_buffer.start_iter();
         self.text_buffer.place_cursor(&start_iter);
-        self.container.set_sensitive(true);
+        self.overlay.set_sensitive(true);
+        self.delete_button.set_sensitive(true);
+        self.emoji_button.set_sensitive(true);
+        self.table_button.set_sensitive(true);
         self.is_loading.set(false);
     }
 
@@ -496,7 +500,10 @@ impl Editor {
         }
 
         self.text_buffer.set_text("");
-        self.container.set_sensitive(false);
+        self.overlay.set_sensitive(false);
+        self.delete_button.set_sensitive(false);
+        self.emoji_button.set_sensitive(false);
+        self.table_button.set_sensitive(false);
         self.is_loading.set(false);
     }
 
